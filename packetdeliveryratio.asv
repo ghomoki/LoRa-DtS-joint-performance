@@ -1,4 +1,4 @@
-function [PDR, L_static_arr, L_dynamic_arr, L_joint_arr, results] = packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H)
+function [PDR, L_static_arr, L_dynamic_arr, L_joint_arr] = packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H)
 
 %PDR Summary of this function goes here
 %   Detailed explanation goes here
@@ -18,7 +18,6 @@ arguments (Output)
     L_static_arr
     L_dynamic_arr
     L_joint_arr
-    results
 end
 
 
@@ -71,13 +70,13 @@ ToA = T_preamble + T_payload;
 
 
 %% Static Doppler threshold
-F_static = 0.25 * B
+F_static = 0.25 * B;
 
 
 %% Dynamic Doppler threshold
 % L = 16 if LDRO on, L = 1 if LDRO off
 L = 1 + LDRO*15; 
-F_dynamic = (L*B)/(3*2^SF)
+F_dynamic = (L*B)/(3*2^SF);
 
 
 %% Initialize interval
@@ -124,9 +123,9 @@ results = array2table(results_array, VariableNames=["Time", "Doppler shift", "Do
 
 % Exported variables
 PDR = 1 - (S_loss + D_loss - J_loss)/i;
-L_static_arr  = results.("Static loss");
-L_dynamic_arr = results.("Dynamic loss");
-L_joint_arr   = results.("Joint loss");
+L_static_arr  = results{"Static loss"};
+L_dynamic_arr = results{"Dynamic loss"};
+L_joint_arr   = results{"Joint loss"};
 
 function F_D = Dopplershift(t)
     phi = t * sqrt(g/R) * (1 + H/R)^(-3/2);
