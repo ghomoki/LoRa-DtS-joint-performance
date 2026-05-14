@@ -6,7 +6,7 @@ function [PDR, L_static_arr, L_dynamic_arr, L_joint_arr, results] = packetdelive
 arguments (Input)
     E       % Elevation                     (deg)
     B       % Bandwidth setting             (kHz)
-    F_C     % Carrier frequency             (kHz)
+    F_C     % Carrier frequency             (MHz)
     LDRO    % Low data rate optimization    (true/false)
     SF      % Spreading factor              (-)
     P_L     % Packet payload length         (bytes)
@@ -23,15 +23,16 @@ end
 
 
 % Initialization
-S_loss = 0;    % Packets lost due to 
+S_loss = 0;
 D_loss = 0;
 J_loss = 0;
-B = B * 1e3; % convert B, kHz to Hz
+F_C = F_C * 1e6; % Convert MHz to Hz
+B = B * 1e3; % Convert kHz to Hz
 
 % Constants
 R = 6371;           % Earth radius                  (km)
 g = 9.80665/1e3;    % Gravitational acceleration    (km/s)
-c = 299792458;      % Speed of light                (m/s)
+c = 299792458/1e3;      % Speed of light            (km/s)
 
 %% Satellite total visibility time:
 E_min = deg2rad(1);    % Minimum elevation    (deg)
@@ -71,13 +72,13 @@ ToA = T_preamble + T_payload;
 
 
 %% Static Doppler threshold
-F_static = 0.25 * B
+F_static = 0.25 * B;
 
 
 %% Dynamic Doppler threshold
 % L = 16 if LDRO on, L = 1 if LDRO off
 L = 1 + LDRO*15; 
-F_dynamic = (L*B)/(3*2^SF)
+F_dynamic = (L*B)/(3*2^SF);
 
 
 %% Initialize interval
@@ -94,7 +95,7 @@ while t <= tau/2
     %% Doppler rate
     % Central diff over 1 ms
     dt = 1e-3;
-    delta_F_D = (Dopplershift(t - dt/2) + Dopplershift(t + dt/2))/dt;
+    delta_F_D = (Dopplershift(t + dt/2) - Dopplershift(t - dt/2))/dt;
 
     %% Doppler shift over packet
     delta_F_E = F_D - Dopplershift(t + ToA);
