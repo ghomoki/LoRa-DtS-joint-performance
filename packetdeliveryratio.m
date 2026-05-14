@@ -84,7 +84,7 @@ F_dynamic = (L*B)/(3*2^SF);
 %% Initialize interval
 t = -tau/2;
 i = 0;
-t_vec = t + 0:floor(tau);
+t_vec = ceil(tau);
 
 results_array = NaN(numel(t_vec), 7);
 
