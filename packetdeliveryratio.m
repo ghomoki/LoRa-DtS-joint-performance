@@ -4,7 +4,7 @@ function [PDR, L_static_arr, L_dynamic_arr, L_joint_arr, results] = packetdelive
 %   Detailed explanation goes here
 
 arguments (Input)
-    E       % Elevation                     (deg)
+    E       % Minimum elevation angle       (deg)
     B       % Bandwidth setting             (kHz)
     F_C     % Carrier frequency             (MHz)
     LDRO    % Low data rate optimization    (true/false)
@@ -31,11 +31,11 @@ B = B * 1e3; % Convert kHz to Hz
 
 % Constants
 R = 6371;           % Earth radius                  (km)
-g = 9.80665/1e3;    % Gravitational acceleration    (km/s)
+g = 9.80665/1e3;    % Gravitational acceleration    (km/s^2)
 c = 299792458/1e3;      % Speed of light            (km/s)
 
 %% Satellite total visibility time:
-E_min = deg2rad(1);    % Minimum elevation    (deg)
+E_min = deg2rad(E);    % Minimum elevation, in radians
 
 % Slant range
 d = R * (sqrt( ((H + R)/R)^2 - cos(E_min)^2 ) - sin(E_min)); 
@@ -49,73 +49,54 @@ tau = 2*d_g/v;
 
 
 %% Time on Air:
-% Symbol duration
-T_s = 2^SF/B; 
-
-% Preamble length
-n_preamble = 12;
-%   TODO: different preamble lengths
-T_preamble = (n_preamble + 4.25) * T_s;
-
-% Payload length (from SX127X datasheet)
-IH = 1;  % Header implicit
-%   TODO: explicit header option
-CRC = 0; % No CRC
-%   TODO: CRC option
-CR = 1;  % Coding rate = 4/5
-%   TODO: other coding rates options
-
-n_payload = 8 + max( ceil( (8 * P_L - 4 * SF + 28 + 16 * CRC - 20 * IH)/(4*(SF - 2 * LDRO)) * (CR + 4) ), 0 );
-T_payload = n_payload * T_s;
-
-ToA = T_preamble + T_payload;
+% lora_toa returns ms; the Doppler loop below works in seconds, so divide by 1000.
+% B has already been converted to Hz above; lora_toa expects kHz, hence the /1e3.
+ToA = lora_toa(SF, B/1e3, P_L, LDRO) / 1e3;
 
 
-%% Static Doppler threshold
+% Static Doppler threshold
 F_static = 0.25 * B;
 
 
-%% Dynamic Doppler threshold
+% Dynamic Doppler threshold
 % L = 16 if LDRO on, L = 1 if LDRO off
 L = 1 + LDRO*15; 
 F_dynamic = (L*B)/(3*2^SF);
 
 
-%% Initialize interval
+%% Loop: direct overhead pass
 t = -tau/2;
 i = 0;
-t_vec = ceil(tau);
-
-results_array = NaN(numel(t_vec), 7);
+results_array = NaN(ceil(tau) + 2, 7);
 
 while t <= tau/2
-    %% Doppler shift
+    % Doppler shift
     F_D = Dopplershift(t);
 
-    %% Doppler rate
+    % Doppler rate
     % Central diff over 1 ms
     dt = 1e-3;
     delta_F_D = (Dopplershift(t + dt/2) - Dopplershift(t - dt/2))/dt;
 
-    %% Doppler shift over packet
+    % Doppler shift over packet
     delta_F_E = F_D - Dopplershift(t + ToA);
 
-    %% Static Doppler failure
+    % Static Doppler failure
     L_static = abs(F_D) >= abs(F_static);
     S_loss = S_loss + L_static;
 
 
-    %% Dynamic Doppler failure
+    % Dynamic Doppler failure
     L_dynamic = abs(delta_F_E) >= F_dynamic;
     D_loss = D_loss + L_dynamic;
 
 
-    %% Joint Doppler failure
+    % Joint Doppler failure
     L_joint = L_static * L_dynamic;
     J_loss = J_loss + L_joint;
 
 
-    %% Advance
+    % Advance
     i = i + 1;
     results_array(i,:) = [t, F_D, delta_F_D, delta_F_E, L_static, L_dynamic, L_joint];
     t = t + 1;
