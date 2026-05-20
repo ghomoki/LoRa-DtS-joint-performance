@@ -1,4 +1,4 @@
-function [PDR, L_static_arr, L_dynamic_arr, L_joint_arr, results] = packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H)
+function [PDR, L_static_arr, L_dynamic_arr, L_joint_arr, results] = packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H, opts)
 
 %PDR Summary of this function goes here
 %   Detailed explanation goes here
@@ -11,6 +11,12 @@ arguments (Input)
     SF      % Spreading factor              (-)
     P_L     % Packet payload length         (bytes)
     H       % Satellite altitude            (km)
+    opts.R_p         = 5    % Packet reporting period            (s)
+    opts.n_preamble  = 8    % LoRa preamble length               (symbols)
+    opts.IH          = 0    % Implicit header? (0 = explicit)
+    opts.CRC         = 1    % CRC enabled?
+    opts.CR          = 1    % Coding rate index (1..4 -> 4/5..4/8)
+    opts.PL_overhead = 5    % MAC overhead added to payload      (bytes)
 end
 
 arguments (Output)
@@ -51,7 +57,9 @@ tau = 2*d_g/v;
 %% Time on Air:
 % lora_toa returns ms; the Doppler loop below works in seconds, so divide by 1000.
 % B has already been converted to Hz above; lora_toa expects kHz, hence the /1e3.
-ToA = lora_toa(SF, B/1e3, P_L, LDRO) / 1e3;
+ToA = lora_toa(SF, B/1e3, P_L, LDRO, ...
+    n_preamble=opts.n_preamble, IH=opts.IH, CRC=opts.CRC, ...
+    CR=opts.CR, PL_overhead=opts.PL_overhead) / 1e3;
 
 
 % Static Doppler threshold
@@ -67,7 +75,7 @@ F_dynamic = (L*B)/(3*2^SF);
 %% Loop: direct overhead pass
 t = -tau/2;
 i = 0;
-results_array = NaN(ceil(tau) + 2, 7);
+results_array = NaN(ceil(tau/opts.R_p) + 2, 7);
 
 while t <= tau/2
     % Doppler shift
@@ -99,7 +107,7 @@ while t <= tau/2
     % Advance
     i = i + 1;
     results_array(i,:) = [t, F_D, delta_F_D, delta_F_E, L_static, L_dynamic, L_joint];
-    t = t + 1;
+    t = t + opts.R_p;
 end
 
 results = array2table(results_array, VariableNames=["Time", "Doppler shift", "Doppler rate", "Packet Doppler shift", "Static loss", "Dynamic loss", "Joint loss"]);
