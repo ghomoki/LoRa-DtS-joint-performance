@@ -41,17 +41,10 @@ g = 9.80665/1e3;    % Gravitational acceleration    (km/s^2)
 c = 299792458/1e3;      % Speed of light            (km/s)
 
 %% Satellite total visibility time:
-E_min = deg2rad(E);    % Minimum elevation, in radians
+tau = pass_duration(H, E);
 
-% Slant range
-d = R * (sqrt( ((H + R)/R)^2 - cos(E_min)^2 ) - sin(E_min)); 
-
-% Ground track
-d_g = R * asin( (d * cos(E_min)/(R + H)) ); 
-
-% Orbital velocity
+% Orbital velocity (also used by the Dopplershift nested function below)
 v = sqrt( g * R/(1 + H/R) );
-tau = 2*d_g/v;
 
 
 %% Time on Air:
