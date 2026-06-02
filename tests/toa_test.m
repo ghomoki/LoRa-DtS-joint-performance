@@ -19,6 +19,12 @@ classdef toa_test < matlab.unittest.TestCase
 %   The tolerance of 2 ms absorbs this — worst case (SF=12 at B=31.25)
 %   drifts by ~1.3 ms.
 
+    methods (TestClassSetup)
+        function addProjectRootToPath(~)
+            addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+        end
+    end
+
     properties (TestParameter)
         scenario = struct( ...
             'A_SF7_B31_25',   struct(SF=7,  B=31.25, P_L=55, LDRO=true, expected=595), ...

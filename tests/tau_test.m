@@ -11,6 +11,12 @@ classdef tau_test < matlab.unittest.TestCase
 %   eq. (4) bug (missing (R+H)/R factor), which would shift these values
 %   downward by ~8%, ~11%, ~14%, ~19% respectively.
 
+    methods (TestClassSetup)
+        function addProjectRootToPath(~)
+            addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+        end
+    end
+
     properties (TestParameter)
         scenario = struct( ...
             'H560_E1',  struct(H=560,  E_min=1, expected=708.9), ...

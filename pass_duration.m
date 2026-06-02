@@ -1,42 +1,35 @@
-function tau = pass_duration(H, E_min)
-%PASS_DURATION  Visibility time for a direct-overhead LEO pass.
+function tau = pass_duration(H_km, E_min_deg)
+%PASS_DURATION  Visibility time for a direct overhead satellite pass.
 %
 %   tau = pass_duration(H, E_min) returns the pass duration in seconds for
-%   a satellite in a circular orbit at altitude H (km), passing directly
-%   overhead a ground station with minimum elevation angle E_min (degrees).
+%   a satellite in a circular orbit at altitude H (km) passing directly
+%   overhead a ground station. Visibility has a minimum elevation angle
+%   E_min (degrees).
 %
-%   Geometric model: the satellite traverses an arc of 2*alpha at orbital
-%   radius (R+H), where alpha is the half-angle subtended at Earth's center
-%   between the sub-satellite point at zenith and the sub-satellite point
-%   at elevation E_min. Pass time = arc length / orbital velocity.
-%
-%   NOTE: this differs from the paper's eq. (4), which uses
-%       tau = 2*d_g(E_min)/v
-%   where d_g is the ground-track length (arc at Earth's surface). That
-%   formula is short by a factor of (R+H)/R because the sub-satellite point
-%   moves at R*v/(R+H), not v. For H=560 km, the paper's formula gives
-%   651.6 s vs. the correct 708.9 s; the latter matches the TLE-based
-%   access window in the paper's own Bandwidth_LoRa_Dopper_effect.m (708 s).
+%   Note: different formula from [1] eq. 4, which is incorrect [see Model notes]
 
 arguments
-    H     % Orbital altitude          (km)
-    E_min % Minimum elevation angle   (deg)
+    H_km      % Orbital altitude        (km)
+    E_min_deg % Minimum elevation angle (deg)
 end
 
-R = 6371;            % Earth radius                  (km)
-g = 9.80665/1e3;     % Gravitational acceleration    (km/s^2)
+% Convert inputs to SI
+H     = H_km * 1e3;         % km  -> m
+E_min = deg2rad(E_min_deg); % deg -> rad
 
-E_rad = deg2rad(E_min);
+% Constants
+R_E = 6371e3;  % Earth radius                (m)
+g   = 9.80665; % Gravitational acceleration  (m/s^2)
 
-% Slant range at the visibility horizon (E = E_min), paper eq. (1)
-d = R * (sqrt(((H + R)/R)^2 - cos(E_rad)^2) - sin(E_rad));
+% Slant range at the visibility horizon (E = E_min), eq. (1)
+d_m = R_E * (sqrt(((H + R_E)/R_E)^2 - cos(E_min)^2) - sin(E_min));
 
-% Central half-angle from sub-sat-at-zenith to sub-sat-at-(E=E_min)
-alpha = asin(d * cos(E_rad) / (R + H));
+% Central half-angle from sub-sat at zenith to sub-sat at E = E_min
+alpha = asin(d_m * cos(E_min) / (R_E + H));
 
-% Orbital velocity (circular orbit)
-v = sqrt(g * R / (1 + H/R));
+% Orbital velocity of circular orbit
+v = sqrt(g * R_E / (1 + H/R_E));
 
 % Pass time = 2 * arc-at-orbital-radius / velocity
-tau = 2 * (R + H) * alpha / v;
+tau = 2 * (R_E + H) * alpha / v;
 end

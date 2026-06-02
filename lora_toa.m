@@ -1,9 +1,14 @@
 function ToA = lora_toa(SF, B, P_L, LDRO, opts)
-%LORA_TOA Compute LoRa Time on Air per SX127x datasheet.
+%LORA_TOA  Compute LoRa Time on Air per SX127x datasheet, section 4.1.1.6.
 %
-%   ToA = lora_toa(SF, B, P_L, LDRO) returns the Time on Air in
-%   milliseconds for a LoRa frame, using the formula from the
-%   SX1276/77/78/79 datasheet, section 4.1.1.6.
+%   ToA = lora_toa(SF, B, P_L, LDRO) returns the Time on Air for a LoRa
+%   frame, in milliseconds.
+%
+%   This function deliberately uses kHz/ms rather than SI Hz/s, matching
+%   the Semtech LoRa Calculator and the units conventionally used in LoRa
+%   documentation. The choice keeps the test values in toa_test.m readable
+%   (e.g. "595 ms" instead of "0.595 s") and the formulas dimensionally
+%   transparent (T_s = 2^SF / B comes out in ms when B is in kHz).
 %
 %   Inputs:
 %     SF    Spreading factor (7..12)

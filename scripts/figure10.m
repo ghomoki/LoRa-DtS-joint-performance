@@ -4,6 +4,7 @@
 %   The B=125 kHz curves are swept at finer H resolution than B=250 kHz.
 
 clear;
+addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 
 SF   = 12;
 PL   = 59;

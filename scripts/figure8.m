@@ -3,6 +3,7 @@
 %   Fixed: SF=12, H=560 km, LDRO=on, E_min=1 deg.
 
 clear;
+addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 
 SF   = 12;
 H    = 560;
