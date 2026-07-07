@@ -10,10 +10,10 @@ addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 E    = 1;        % Minimum elevation angle  (deg) — full pass
 B    = 125;      % Bandwidth                (kHz)
 F_C  = 915;      % Carrier frequency        (MHz) — US/Asia ISM band
-LDRO = false;    % LDRO not required for SF=10 at B=125 (T_s = 8.19 ms)
+LDRO = false;     % 
 SF   = 10;       % Spreading factor
 P_L  = 55;       % Application payload      (bytes)
-H    = 1500;     % Orbital altitude         (km) — high LEO
+H    = 1500;      % Orbital altitude         (km) — high LEO
 
 fprintf('Running stress scenario: SF=%d, B=%g kHz, F_C=%g MHz, H=%g km, E_min=%g deg\n', ...
     SF, B, F_C, H, E);
@@ -65,11 +65,11 @@ plot(time, P_link,    '-', Color=[0.00 0.45 0.74], LineWidth=1.3, DisplayName='P
 plot(time, P_success, '-', Color=[0.85 0.33 0.10], LineWidth=2.0, DisplayName='P_{success}');
 if ~isempty(i_dynamic_fail)
     plot(time(i_dynamic_fail), zeros(size(i_dynamic_fail)), ...
-        'kx', MarkerSize=8, LineWidth=1.2, DisplayName='Dynamic Doppler fail');
+        'kx', MarkerSize=8, LineStyle='none', DisplayName='Dynamic Doppler fail');
 end
 if ~isempty(i_static_fail)
     plot(time(i_static_fail), zeros(size(i_static_fail)), ...
-        'k+', MarkerSize=8, LineWidth=1.2, DisplayName='Static Doppler fail');
+        'k+', MarkerSize=8, LineStyle='none', DisplayName='Static Doppler fail');
 end
 hold off;
 ylabel('Probability');
