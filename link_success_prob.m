@@ -1,45 +1,32 @@
-function P_link = link_success_prob(SNR_mean_lin, K, D_SNR_lin, N_MC, sigma_X_dB)
-%LINK_SUCCESS_PROB  Monte Carlo link success probability under Rician
-%   fading and log-normal shadowing.
+function P_link = link_success_prob(SNR_mean_lin, K, D_SNR_lin)
+%LINK_SUCCESS_PROB  Analytic link success probability under Rician fading.
 %
-%   P_link = link_success_prob(SNR_mean_lin, K, D_SNR_lin, N_MC, sigma_X_dB)
+%   P_link = link_success_prob(SNR_mean_lin, K, D_SNR_lin)
 %
 %   For a deterministic mean SNR (linear) on a Rician fading channel with
-%   K-factor K and additional log-normal shadowing of standard deviation
-%   sigma_X_dB (dB), returns the probability that the instantaneous SNR
-%   exceeds the threshold D_SNR_lin (linear), estimated from N_MC samples.
+%   K-factor K, returns the probability that the instantaneous SNR
+%   exceeds the threshold D_SNR_lin (linear). Vectorized over all inputs.
 %
 %   Channel model: |h|^2 is the squared magnitude of a complex Gaussian
-%   with non-zero mean (Rician), normalized to E[|h|^2] = 1. Following
-%   Asad Ullah et al. (2022)'s Probability_SNR.m, the LOS component is
-%   placed at 45 degrees in the complex plane (real and imaginary means
-%   both equal to mu = sqrt(K/(2(K+1)))). This is mathematically
-%   equivalent to the standard form with the LOS on the real axis, since
-%   Rician statistics depend only on |LOS|^2, not its phase.
-
+%   with non-zero mean (Rician), normalized to E[|h|^2] = 1, i.e.
+%   h = h_r + 1i*h_i with h_r, h_i ~ N(mu, sigma_h^2),
+%   mu = sqrt(K/(2(K+1))) and sigma_h^2 = 1/(2(K+1)). Then
+%   |h|^2 / sigma_h^2 follows a noncentral chi-square distribution with
+%   2 degrees of freedom and noncentrality lambda = 2K, so the success
+%   probability has the closed form
+%
+%       P_link = P( SNR_mean * |h|^2 >= D_SNR )
+%              = Q_1( sqrt(2K), sqrt(2(K+1) D_SNR / SNR_mean) )
+%
+%   where Q_1 is the first-order Marcum Q-function, evaluated here as the
+%   noncentral chi-square upper tail. tests/link_success_prob_test.m
+%   regression-checks this against Monte Carlo sampling of the envelope.
 arguments
     SNR_mean_lin
     K
     D_SNR_lin
-    N_MC
-    sigma_X_dB
 end
 
-% Rician channel parameters (Omega = E[|h|^2] = 1)
-mu      = sqrt(K       / (2 * (K + 1)));
-sigma_h = sqrt(1       / (2 * (K + 1)));
-
-% Sample the Rician squared envelope
-hr   = sigma_h * randn(1, N_MC) + mu;
-hi   = sigma_h * randn(1, N_MC) + mu;
-h_sq = hr.^2 + hi.^2;
-
-% Sample log-normal shadowing factor (linear, multiplies received power)
-% X_g > 0 corresponds to extra dB of path loss, hence the negative exponent
-X_g_dB = sigma_X_dB * randn(1, N_MC);
-shadow = 10.^(-X_g_dB / 10);
-
-% Instantaneous SNR and success fraction
-SNR_inst = SNR_mean_lin * h_sq .* shadow;
-P_link   = mean(SNR_inst >= D_SNR_lin);
+x      = 2 .* (K + 1) .* D_SNR_lin ./ SNR_mean_lin;
+P_link = ncx2cdf(x, 2, 2 .* K, 'upper');
 end

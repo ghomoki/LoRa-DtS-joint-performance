@@ -9,3 +9,28 @@ figure8_diag.m
 literature/Enabling_mMTC_in_Remote_Areas_LoRaWAN_and_LEO_Satellite_Integration_for_Offshore_Wind_Farm_Monitoring.pdf
 literature/Performance_analysis_of_low-Earth-orbit_LEO_mobile-Satellite_system_using_moment-based_approximation_of_degradation_factors.pdf
 references_code/Probability_SNR.m
+figures/altitude.png
+figures/altitudesmall.png
+figures/bandwidth.png
+figures/bwsmall.png
+figures/frequency.png
+figures/frequencysmall.png
+figures/pareto.png
+figures/paretosmall
+figures/paretosmall.png
+figures/passmargin.png
+figures/passprobability.png
+figures/passprobabilitysmall.png
+figures/payload.png
+figures/payloadsmall.png
+figures/ricianKsmall.png
+figures/sf.png
+figures/sfsmall.png
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local Claude Code tooling
+.claude/

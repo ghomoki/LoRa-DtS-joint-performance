@@ -1,47 +1,25 @@
 function ToA = lora_toa(SF, B, P_L, LDRO, opts)
-%LORA_TOA  Compute LoRa Time on Air per SX127x datasheet, section 4.1.1.6.
+%LORA_TOA  Compute a LoRa packet's Time on Air.
+%   Based on SX127X datasheet, section 4.1.1.6.
 %
-%   ToA = lora_toa(SF, B, P_L, LDRO) returns the Time on Air for a LoRa
-%   frame, in milliseconds.
-%
-%   This function deliberately uses kHz/ms rather than SI Hz/s, matching
-%   the Semtech LoRa Calculator and the units conventionally used in LoRa
-%   documentation. The choice keeps the test values in toa_test.m readable
-%   (e.g. "595 ms" instead of "0.595 s") and the formulas dimensionally
-%   transparent (T_s = 2^SF / B comes out in ms when B is in kHz).
-%
-%   Inputs:
-%     SF    Spreading factor (7..12)
-%     B     Bandwidth (kHz)
-%     P_L   Application payload length (bytes); MAC overhead is added
-%           internally via the PL_overhead option.
-%     LDRO  Low Data Rate Optimization flag (logical or 0/1)
-%
-%   Name-value options (defaults match the paper's LoRa_ToA.m, except the
-%   preamble constant is the datasheet-correct 4.25 rather than the paper's
-%   4.24 typo):
-%     n_preamble  Preamble length in symbols (default 8, LoRaWAN default)
-%     IH          1 = implicit header, 0 = explicit header (default 0)
-%     CRC         1 = CRC enabled, 0 = disabled (default 1)
-%     CR          Coding rate index 1..4 -> 4/5..4/8 (default 1)
-%     PL_overhead Bytes added to P_L before the formula (default 5,
-%                 matches the paper's LoRaWAN-style MAC overhead)
+%   ToA = lora_toa(SF, B, P_L, LDRO) returns the Time on Air (transmission length) for a LoRa
+%   packet in milliseconds.
 
 arguments
-    SF
-    B
-    P_L
-    LDRO
-    opts.n_preamble = 8
-    opts.IH = 0
-    opts.CRC = 1
-    opts.CR = 1
-    opts.PL_overhead = 5
+    SF                      % Spreading factor                  (7..12)            SF 6 not modelled because of special behavior
+    B                       % Bandwidth                         (kHz)
+    P_L                     % Application payload length        (1..255 bytes)
+    LDRO                    % Low data rate optimization off/on (0/1)
+    opts.n_preamble = 12    % Preamble length                   (6..65535 symbols)
+    opts.IH = 0             % Explicit/implicit header          (0/1)
+    opts.CRC = 1            % CRC disabled/enabled              (0/1)
+    opts.CR = 1             % Coding rate index                 (1..4)             -> rate 4/5..4/8
+    opts.PL_overhead = 0    % Non-application payload length    (bytes)            e.g. LoRaWAN overhead 
 end
 
 PL = P_L + opts.PL_overhead;
 
-% B in kHz, so T_s comes out in ms directly
+% B in kHz -> symbol duration T_s in ms
 T_s = 2^SF / B;
 
 T_preamble = (opts.n_preamble + 4.25) * T_s;

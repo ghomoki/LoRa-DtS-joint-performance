@@ -13,11 +13,12 @@ classdef toa_test < matlab.unittest.TestCase
 %       LDRO        = always applied when the flag is set (regardless of
 %                     the LoRaWAN T_s > 16.38 ms recommendation)
 %
-%   Our lora_toa.m uses the same defaults BUT keeps the datasheet-correct
-%   preamble constant 4.25 instead of the paper's 4.24 typo. The resulting
-%   ToA is therefore ~0.05*T_s larger than the paper's published value.
-%   The tolerance of 2 ms absorbs this — worst case (SF=12 at B=31.25)
-%   drifts by ~1.3 ms.
+%   The paper's configuration is passed explicitly below (lora_toa's own
+%   defaults are the plain datasheet ones: n_preamble=12, PL_overhead=0).
+%   Our lora_toa.m keeps the datasheet-correct preamble constant 4.25
+%   instead of the paper's 4.24 typo. The resulting ToA is therefore
+%   ~0.05*T_s larger than the paper's published value. The tolerance of
+%   2 ms absorbs this — worst case (SF=12 at B=31.25) drifts by ~1.3 ms.
 
     methods (TestClassSetup)
         function addProjectRootToPath(~)
@@ -38,7 +39,8 @@ classdef toa_test < matlab.unittest.TestCase
 
     methods (Test)
         function matchesPaperToA(testCase, scenario)
-            actual = lora_toa(scenario.SF, scenario.B, scenario.P_L, scenario.LDRO);
+            actual = lora_toa(scenario.SF, scenario.B, scenario.P_L, scenario.LDRO, ...
+                n_preamble=8, IH=0, CRC=1, CR=1, PL_overhead=5);
             testCase.verifyEqual(actual, scenario.expected, "AbsTol", 2);
         end
     end
