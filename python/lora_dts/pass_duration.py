@@ -1,5 +1,3 @@
-"""Overhead-pass geometry, port of pass_duration.m."""
-
 import math
 
 R_E = 6371e3    # Earth radius               (m)

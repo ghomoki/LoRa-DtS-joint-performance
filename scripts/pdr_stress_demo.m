@@ -8,12 +8,12 @@ clear;
 addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 
 E    = 1;        % Minimum elevation angle  (deg) — full pass
-B    = 125;      % Bandwidth                (kHz)
-F_C  = 915;      % Carrier frequency        (MHz) — US/Asia ISM band
-LDRO = false;     % 
-SF   = 10;       % Spreading factor
-P_L  = 55;       % Application payload      (bytes)
-H    = 1500;      % Orbital altitude         (km) — high LEO
+B    = 250;      % Bandwidth                (kHz)
+F_C  = 434;      % Carrier frequency        (MHz) — US/Asia ISM band
+LDRO = true;     % 
+SF   = 11;       % Spreading factor
+P_L  = 50;       % Application payload      (bytes)
+H    = 550;      % Orbital altitude         (km) — high LEO
 
 fprintf('Running stress scenario: SF=%d, B=%g kHz, F_C=%g MHz, H=%g km, E_min=%g deg\n', ...
     SF, B, F_C, H, E);

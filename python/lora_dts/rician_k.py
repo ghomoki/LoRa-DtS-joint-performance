@@ -8,12 +8,11 @@ _K_DATA = [3.07, 3.24, 3.60, 5.63, 17.06]
 
 # Not-a-knot cubic spline with cubic extrapolation: the same scheme as
 # MATLAB griddedInterpolant(E_data, K_data, 'spline', 'spline').
-_K_MODEL = CubicSpline(_E_DATA, _K_DATA, bc_type="not-a-knot",
-                       extrapolate=True)
+_K_MODEL = CubicSpline(_E_DATA, _K_DATA, bc_type="not-a-knot", extrapolate=True)
 
 
 def rician_k(e_deg):
-    """Rician K-factor for LEO satellite links at elevation e_deg (degrees).
+    """Elevation-dependent Rician K-factor for LEO satellite links.
 
     Fitted cubic spline to Kim et al. (2006)'s measured K values at
     {20, 30, 40, 60, 80} degrees elevation:
