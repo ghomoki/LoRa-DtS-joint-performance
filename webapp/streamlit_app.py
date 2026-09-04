@@ -24,11 +24,50 @@ BW_KHZ = [7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125.0, 250.0, 500.0]
 # Bandwidth grid of the design-space exploration (matches pareto_front.m)
 DS_BW_KHZ = [31.25, 62.5, 125.0, 250.0, 500.0]
 
-# MATLAB default line colors, for figure parity with the paper
-C_BLUE = "#0072BD"
-C_ORANGE = "#D95319"
-C_GREEN = "#77AC30"
-C_CYAN = "#4DBEEE"
+# Line colors of the MATLAB figures in scripts/, for figure parity with
+# the paper. C_BLUE / C_ORANGE / C_GREEN are the sweep-script palette.
+C_BLUE = "#0072BD"      # [0.00 0.45 0.74]
+C_ORANGE = "#D95319"    # [0.85 0.33 0.10]
+C_GREEN = "#77AC30"     # [0.47 0.67 0.19]
+C_GRAY = "#808080"      # [0.50 0.50 0.50], sensitivity line
+C_PLINK = "#05CFE6"     # [5 207 230]/256, P_link
+C_PSUCCESS = "#30961A"  # [48 150 26]/256, P_success
+
+# MATLAB's default axes appearance: 4:3 figure on a 0.94 gray canvas,
+# white plot box with all four sides drawn, inward ticks, and a light
+# solid grid painted under the data.
+plt.rcParams.update({
+    "figure.facecolor": "#F0F0F0",
+    "figure.dpi": 140,
+    "axes.facecolor": "white",
+    "axes.edgecolor": "#262626",
+    "axes.labelcolor": "#262626",
+    "axes.linewidth": 0.8,
+    "axes.axisbelow": True,
+    "axes.grid": True,
+    "grid.color": "#262626",
+    "grid.alpha": 0.15,
+    "grid.linewidth": 0.8,
+    "grid.linestyle": "-",
+    "xtick.direction": "in",
+    "ytick.direction": "in",
+    "xtick.color": "#262626",
+    "ytick.color": "#262626",
+    "xtick.top": True,
+    "ytick.right": True,
+    "font.family": ["Helvetica", "Arial", "DejaVu Sans"],
+    "font.size": 10,
+    "axes.labelsize": 11,   # MATLAB LabelFontSizeMultiplier = 1.1
+    "legend.fontsize": 10,
+    "legend.edgecolor": "#262626",
+    "legend.framealpha": 1.0,
+    "legend.borderpad": 0.4,
+})
+
+# MATLAB's default figure is 560x420 px. Reproducing that size at 10 pt
+# text keeps the label-to-axes proportions identical to the paper figures;
+# the raised dpi only renders it at more pixels for the browser.
+FIGSIZE = (5.6, 4.2)
 
 PARAM_LABELS = {
     "f_c_mhz": "Carrier frequency (MHz)",
@@ -37,6 +76,22 @@ PARAM_LABELS = {
     "sf": "Spreading factor",
     "b_khz": "Bandwidth (kHz)",
     "ldro": "LDRO",
+}
+
+# Axis labels and legend placement of the matching scripts/sweep_pdr_vs_*.m
+AXIS_LABELS = {
+    "f_c_mhz": "Carrier frequency (MHz)",
+    "h_km": "Orbital altitude (km)",
+    "p_l": "Application payload (bytes)",
+    "sf": "Spreading factor",
+    "b_khz": "Bandwidth (kHz)",
+}
+LEGEND_LOC = {
+    "f_c_mhz": "upper right",
+    "h_km": "upper right",
+    "p_l": "upper right",
+    "sf": "upper left",
+    "b_khz": "upper left",
 }
 
 
@@ -116,39 +171,54 @@ with tab_single:
 
     c_plot1, c_plot2, c_plot3 = st.columns(3)
 
-    fig1, ax = plt.subplots(figsize=(5.5, 3.5))
-    ax.plot(t, res.p_link, color=C_CYAN, lw=1.2, label="$P_{link}$")
-    ax.plot(t, p_success, color=C_GREEN, lw=2.5, label="$P_{success}$")
-    ax.plot(t[res.l_static], np.zeros(res.l_static.sum()), ".",
-            color=C_BLUE, label="$L_{static}$ = true")
-    ax.plot(t[res.l_dynamic], np.zeros(res.l_dynamic.sum()), ".",
-            color=C_ORANGE, label="$L_{dynamic}$ = true")
+    # Panel 1: reception probability (scripts/pdr_three_failure_modes.m).
+    # The Doppler markers are only drawn — and only appear in the legend —
+    # when that failure mode actually fires, as in the MATLAB script.
+    fig1, ax = plt.subplots(figsize=FIGSIZE)
+    ax.plot(t, res.p_link, "-", color=C_PLINK, lw=1.3, label="$P_{link}$")
+    ax.plot(t, p_success, "-", color=C_PSUCCESS, lw=2.3,
+            label="$P_{success}$")
+    if res.l_static.any():
+        ax.plot(t[res.l_static], np.zeros(res.l_static.sum()), ".",
+                color=C_BLUE, ms=6, ls="none", label="$L_{static}$ = true")
+    if res.l_dynamic.any():
+        ax.plot(t[res.l_dynamic], np.zeros(res.l_dynamic.sum()), ".",
+                color=C_ORANGE, ms=6, ls="none", label="$L_{dynamic}$ = true")
     ax.set_xlabel("Time (s)\nZenith = 0")
     ax.set_ylabel("Packet reception probability")
+    ax.set_xlim(t[0], t[-1])
     ax.set_ylim(-0.05, 1.05)
-    ax.legend(loc="upper right", fontsize=8)
+    ax.legend(loc="upper right")
     fig1.tight_layout()
     c_plot1.pyplot(fig1)
     plt.close(fig1)
 
-    fig2, ax = plt.subplots(figsize=(5.5, 3.5))
-    ax.plot(t, res.link_margin_db, color=C_BLUE)
-    ax.axhline(0, color="k", lw=0.8, ls=":")
-    ax.set_xlabel("Time (s)")
+    # Panel 2: link margin, with the dashed sensitivity line at 0 dB
+    fig2, ax = plt.subplots(figsize=FIGSIZE)
+    ax.plot(t, res.link_margin_db, "-", color=C_BLUE, lw=1.5)
+    ax.axhline(0, ls="--", color=C_GRAY, lw=1.0)
+    ax.text(t[0], 0, " sensitivity", color=C_GRAY, fontsize=9,
+            ha="left", va="bottom")
+    ax.set_xlabel("Time (s)\nZenith = 0")
     ax.set_ylabel("Link margin (dB)")
+    ax.set_xlim(t[0], t[-1])
     fig2.tight_layout()
     c_plot2.pyplot(fig2)
     plt.close(fig2)
 
-    fig3, ax = plt.subplots(figsize=(5.5, 3.5))
-    ax.plot(t, res.elevation_deg, color=C_BLUE)
-    ax.set_xlabel("Time (s)")
+    # Panel 3: pass geometry — elevation with the Rician K factor it drives
+    fig3, ax = plt.subplots(figsize=FIGSIZE)
+    ax.plot(t, res.elevation_deg, "-", color=C_BLUE, lw=1.5)
+    ax.set_xlabel("Time (s)\nZenith = 0")
     ax.set_ylabel("Elevation (deg)", color=C_BLUE)
-    ax.tick_params(axis="y", labelcolor=C_BLUE)
+    ax.tick_params(axis="y", colors=C_BLUE)
+    ax.set_xlim(t[0], t[-1])
+    ax.set_ylim(0, 90)
     ax_k = ax.twinx()
-    ax_k.plot(t, rician_k(res.elevation_deg), color=C_ORANGE)
+    ax_k.plot(t, rician_k(res.elevation_deg), "-", color=C_ORANGE, lw=1.5)
     ax_k.set_ylabel("Rician K factor", color=C_ORANGE)
-    ax_k.tick_params(axis="y", labelcolor=C_ORANGE)
+    ax_k.tick_params(axis="y", colors=C_ORANGE, direction="in")
+    ax_k.grid(False)
     fig3.tight_layout()
     c_plot3.pyplot(fig3)
     plt.close(fig3)
@@ -195,17 +265,28 @@ with tab_sweep:
             if 2 ** q["sf"] / q["b_khz"] < 16.38:
                 pdr_off[i] = run_pass(**q, ldro=False).pdr * 100
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    ax.plot(sweep_vals, pdr_on, "o-", color=C_BLUE, label="LDRO on")
+    # Solid line for LDRO off, dashed for LDRO on, as in sweep_pdr_vs_*.m
+    fig, ax = plt.subplots(figsize=FIGSIZE)
     if not np.all(np.isnan(pdr_off)):
-        ax.plot(sweep_vals, pdr_off, "o-", color=C_ORANGE, label="LDRO off")
+        ax.plot(sweep_vals, pdr_off, "-", marker="o", color=C_BLUE,
+                mfc=C_BLUE, lw=1.6, ms=5, label="LDRO off")
+    ax.plot(sweep_vals, pdr_on, "--", marker="o", color=C_ORANGE,
+            mfc=C_ORANGE, lw=1.6, ms=5, label="LDRO on")
     if sweep_key == "b_khz":
         ax.set_xscale("log")
-    ax.set_xlabel(PARAM_LABELS[sweep_key])
+        # Ticks on the bandwidth values themselves, as in sweep_pdr_vs_bw.m.
+        # Rotated because the app offers 10 bandwidths where the script
+        # plots 7, and upright labels would overlap.
+        ax.set_xticks(sweep_vals, [f"{b:g}" for b in sweep_vals],
+                      rotation=45, ha="right")
+        ax.minorticks_off()
+    elif sweep_key == "sf":
+        ax.set_xticks(sweep_vals)
+    ax.set_xlabel(AXIS_LABELS[sweep_key])
     ax.set_ylabel("PDR (%)")
+    ax.set_xlim(min(sweep_vals), max(sweep_vals))
     ax.set_ylim(0, 100)
-    ax.grid(True, alpha=0.4)
-    ax.legend()
+    ax.legend(loc=LEGEND_LOC[sweep_key])
     fig.tight_layout()
     st.columns(2)[0].pyplot(fig)
     plt.close(fig)
@@ -241,7 +322,7 @@ with tab_ds:
     sf_colors = plt.cm.turbo(np.linspace(0, 1, len(SF_VALUES)))
     bw_markers = ["o", "s", "^", "d", "v"]
 
-    fig, ax = plt.subplots(figsize=(9, 4.5))
+    fig, ax = plt.subplots(figsize=FIGSIZE)
     for i, (sf, b, ldro) in enumerate(configs):
         if not viable[i]:
             continue
@@ -261,7 +342,6 @@ with tab_ds:
     ax.set_ylim(0, 100)
     ax.set_xlabel("Bit rate (bps)")
     ax.set_ylabel("PDR (%)")
-    ax.grid(True, alpha=0.4)
 
     legend_handles = [
         Line2D([], [], ls="", marker="s", ms=8, color=sf_colors[s],
@@ -278,7 +358,7 @@ with tab_ds:
                label="LDRO off"),
     ]
     ax.legend(handles=legend_handles, loc="center left",
-              bbox_to_anchor=(1.02, 0.5), fontsize=8)
+              bbox_to_anchor=(1.02, 0.5), fontsize=9)
     fig.tight_layout()
     st.columns([3, 2])[0].pyplot(fig)
     plt.close(fig)
