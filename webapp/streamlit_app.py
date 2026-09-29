@@ -1,11 +1,13 @@
 """Interactive web front-end for the LoRa Direct-to-Satellite PDR model."""
 
+import base64
 import io
 
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator, StrMethodFormatter
 
 from lora_dts import packet_delivery_ratio, rician_k
 
@@ -33,6 +35,42 @@ DEF_H_KM = 1000
 DEF_P_L = 100
 DEF_SF = 8
 DEF_B_KHZ = 62.5
+DEF_P_TX_DBM = 20
+DEF_G_DBI = 2.0
+
+# SX1276 output power settings (datasheet, RF power amplifiers): -4 to +15 dBm on
+# the RFO pin, +2 to +17 dBm on PA_BOOST, both in 1 dB steps, plus the
+# +20 dBm high-power mode on PA_BOOST. +18 and +19 dBm are not available.
+P_TX_DBM = list(range(-4, 18)) + [20]
+
+# Link budget inputs; kept apart from PARAM_LABELS so they are not offered
+# as sweep parameters
+LINK_LABELS = {
+    "p_tx_dbm": "Tx power (dBm)",
+    "g_t": "Tx antenna gain (dBi)",
+    "g_r": "Rx antenna gain (dBi)",
+}
+
+# Starting scenario lists of the sweep tab: those of the paper's figures
+# (sweep_pdr_vs_*.m). The swept parameter's own entry is ignored.
+_MISSION_SWEEP_SCENARIOS = [
+    {"sf": 8, "b_khz": 62.5, "ldro": False},
+    {"sf": 10, "b_khz": 125.0, "ldro": False},
+    {"sf": 12, "b_khz": 250.0, "ldro": True},
+]
+DEFAULT_SCENARIOS = {
+    "f_c_mhz": _MISSION_SWEEP_SCENARIOS,   # Fig. 3
+    "h_km": _MISSION_SWEEP_SCENARIOS,      # Fig. 4
+    "p_l": _MISSION_SWEEP_SCENARIOS,       # Fig. 5
+    "sf": [                                # Fig. 6
+        {"sf": DEF_SF, "b_khz": b, "ldro": ldro}
+        for b in (62.5, 125.0) for ldro in (False, True)
+    ],
+    "b_khz": [                             # Fig. 7
+        {"sf": sf, "b_khz": DEF_B_KHZ, "ldro": ldro}
+        for sf in (8, 10, 12) for ldro in (False, True)
+    ],
+}
 
 # Line colors of the MATLAB figures in scripts/, for figure parity with
 # the paper. C_BLUE / C_ORANGE / C_GREEN are the sweep-script palette.
@@ -42,55 +80,85 @@ C_GREEN = "#77AC30"     # [0.47 0.67 0.19]
 C_GRAY = "#808080"      # [0.50 0.50 0.50], sensitivity line
 C_PLINK = "#05CFE6"     # [5 207 230]/256, P_link
 C_PSUCCESS = "#30961A"  # [48 150 26]/256, P_success
+# Sweep scenario colors: the scripts' three, then MATLAB's remaining
+# default line colors
+SWEEP_PALETTE = [C_BLUE, C_ORANGE, C_GREEN,
+                 "#7E2F8E", "#EDB120", "#4DBEEE", "#A2142F"]
 
-# MATLAB's default axes appearance, as exported for the paper: white
-# canvas, plot box with all four sides drawn, inward ticks, and a light
-# solid grid painted under the data.
+# MATLAB's axes appearance as exported for the paper: white canvas, only
+# the left and bottom axes (the scripts call `hold on` before plotting,
+# which leaves Box off), inward ticks, a light solid grid under the data,
+# limits rounded out to the nearest ticks, square-cornered legend box.
 plt.rcParams.update({
     "figure.facecolor": "white",
     "savefig.facecolor": "white",
     "axes.facecolor": "white",
     "axes.edgecolor": "#262626",
     "axes.labelcolor": "#262626",
-    "axes.linewidth": 0.8,
+    "axes.linewidth": 0.5,
     "axes.axisbelow": True,
     "axes.grid": True,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "axes.autolimit_mode": "round_numbers",
+    "axes.xmargin": 0,
+    "axes.ymargin": 0,
     "grid.color": "#262626",
     "grid.alpha": 0.15,
-    "grid.linewidth": 0.8,
+    "grid.linewidth": 0.5,
     "grid.linestyle": "-",
     "xtick.direction": "in",
     "ytick.direction": "in",
     "xtick.color": "#262626",
     "ytick.color": "#262626",
-    "xtick.top": True,
-    "ytick.right": True,
     "font.family": ["Helvetica", "Arial", "DejaVu Sans"],
     "font.size": 10,
     "axes.labelsize": 11,   # MATLAB LabelFontSizeMultiplier = 1.1
     "legend.fontsize": 10,
     "legend.edgecolor": "#262626",
     "legend.framealpha": 1.0,
+    "legend.fancybox": False,
     "legend.borderpad": 0.4,
+    "axes.unicode_minus": False,   # MATLAB tick labels use a plain hyphen
 })
 
-# MATLAB's default figure is 560x420 px. Reproducing that size at 10 pt
-# text keeps the label-to-axes proportions identical to the paper figures.
-FIGSIZE = (5.6, 4.2)
+# Aspect ratio of the paper's exported figures (figures/*_fix.png, about
+# 1.56:1). The single-figure size also matches their text-to-plot scale.
+FIGSIZE = (7.0, 4.5)        # parameter sweep
+FIGSIZE_PANEL = (5.6, 3.6)  # single-pass panels, three side by side
+FIGSIZE_DS = (7.0, 4.4)     # design space, legend outside
 
 # Displayed width in CSS pixels. Fixed rather than stretched to the
 # column, so the figures stay legible instead of growing with the window.
-WIDTH_WIDE = 560    # single figure, MATLAB's own export width
-WIDTH_THIRD = 460   # three panels side by side
-WIDTH_LEGEND = 700  # design space, whose outside legend takes a third
+WIDTH_WIDE = 700
+WIDTH_THIRD = 460
+WIDTH_LEGEND = 760
+
+
+def new_axes(figsize=FIGSIZE):
+    """Figure and axes with MATLAB's tick density and labels: about ten
+    intervals per linear axis (e.g. PDR every 10%), so the grid has as many
+    lines as in the paper, and labels without trailing zeros ("0", "0.2",
+    "1"). Log scales and explicit ticks set afterwards override it."""
+    fig, ax = plt.subplots(figsize=figsize)
+    for axis in (ax.xaxis, ax.yaxis):
+        axis.set_major_locator(MaxNLocator(nbins=10, steps=[1, 2, 5, 10]))
+        axis.set_major_formatter(StrMethodFormatter("{x:g}"))
+    return fig, ax
 
 
 def show_fig(fig, container=None, width=WIDTH_WIDE):
-    """Render fig at a fixed display width, oversampled for sharpness."""
+    """Render fig at a fixed display width. Embedded as an <img> rather than
+    st.image, which would downsample it to that width on the server; this
+    way the 200 dpi render stays sharp on high-density screens."""
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=200)
     plt.close(fig)
-    (container or st).image(buf, width=width)
+    data = base64.b64encode(buf.getvalue()).decode()
+    (container or st).markdown(
+        f'<img src="data:image/png;base64,{data}" '
+        f'style="width:{width}px; max-width:100%">',
+        unsafe_allow_html=True)
 
 PARAM_LABELS = {
     "f_c_mhz": "Carrier frequency (MHz)",
@@ -125,17 +193,34 @@ def bit_rate_bps(sf, b_khz, ldro):
 
 
 @st.cache_data
-def run_pass(f_c_mhz, h_km, p_l, sf, b_khz, ldro):
+def run_pass(f_c_mhz, h_km, p_l, sf, b_khz, ldro, p_tx_dbm, g_t, g_r):
     return packet_delivery_ratio(
-        E_MIN, b_khz, f_c_mhz, int(ldro), sf, p_l, h_km
+        E_MIN, b_khz, f_c_mhz, int(ldro), sf, p_l, h_km,
+        p_tx_dbm=p_tx_dbm, g_t=g_t, g_r=g_r,
     )
+
+
+def link_inputs(tab, container):
+    """Render the link budget widgets into container; returns {name: value}."""
+    c1, c2, c3 = container.columns(3)
+    return {
+        "p_tx_dbm": c1.selectbox(
+            LINK_LABELS["p_tx_dbm"], P_TX_DBM,
+            index=P_TX_DBM.index(DEF_P_TX_DBM), key=f"{tab}_p_tx"),
+        "g_t": c2.number_input(
+            LINK_LABELS["g_t"], min_value=-10.0, max_value=30.0,
+            value=DEF_G_DBI, step=0.5, format="%.1f", key=f"{tab}_g_t"),
+        "g_r": c3.number_input(
+            LINK_LABELS["g_r"], min_value=-10.0, max_value=30.0,
+            value=DEF_G_DBI, step=0.5, format="%.1f", key=f"{tab}_g_r"),
+    }
 
 
 def param_inputs(tab, exclude=(), lora=True):
     """Render the model parameter widgets; returns {name: value}.
 
-    Excluded parameters' slots are left empty; with lora=False only the
-    scenario set (carrier frequency, altitude, payload) is rendered.
+    Excluded parameters' slots are left empty; with lora=False the LoRa
+    set is omitted and the link budget set takes its place.
     """
     vals = {}
     scenario_col, lora_col = st.columns(2, gap="large")
@@ -175,6 +260,10 @@ def param_inputs(tab, exclude=(), lora=True):
                 vals["ldro"] = c6.toggle(
                     PARAM_LABELS["ldro"], value=False, key=f"{tab}_ldro",
                     label_visibility="collapsed")
+        # Link budget on a second row, under the mission parameters
+        vals.update(link_inputs(tab, st.columns(2, gap="large")[0]))
+    else:
+        vals.update(link_inputs(tab, lora_col))
 
     return vals
 
@@ -199,47 +288,54 @@ with tab_single:
     # Panel 1: reception probability (scripts/pdr_three_failure_modes.m).
     # The Doppler markers are only drawn — and only appear in the legend —
     # when that failure mode actually fires, as in the MATLAB script.
-    fig1, ax = plt.subplots(figsize=FIGSIZE)
-    ax.plot(t, res.p_link, "-", color=C_PLINK, lw=1.3, label="$P_{link}$")
+    # No xlim in the scripts: MATLAB rounds the limits out to the ticks.
+    fig1, ax = new_axes(FIGSIZE_PANEL)
+    # Upright symbols, as MATLAB's TeX interpreter renders P_{link}
+    ax.plot(t, res.p_link, "-", color=C_PLINK, lw=1.3,
+            label=r"$\mathrm{P_{link}}$")
     ax.plot(t, p_success, "-", color=C_PSUCCESS, lw=2.3,
-            label="$P_{success}$")
+            label=r"$\mathrm{P_{success}}$")
     if res.l_static.any():
         ax.plot(t[res.l_static], np.zeros(res.l_static.sum()), ".",
-                color=C_BLUE, ms=6, ls="none", label="$L_{static}$ = true")
+                color=C_BLUE, ms=6, ls="none",
+                label=r"$\mathrm{L_{static}}$ = true")
     if res.l_dynamic.any():
         ax.plot(t[res.l_dynamic], np.zeros(res.l_dynamic.sum()), ".",
-                color=C_ORANGE, ms=6, ls="none", label="$L_{dynamic}$ = true")
+                color=C_ORANGE, ms=6, ls="none",
+                label=r"$\mathrm{L_{dynamic}}$ = true")
     ax.set_xlabel("Time (s)\nZenith = 0")
     ax.set_ylabel("Packet reception probability")
-    ax.set_xlim(t[0], t[-1])
     ax.set_ylim(-0.05, 1.05)
     ax.legend(loc="upper right")
     fig1.tight_layout()
     show_fig(fig1, c_plot1, WIDTH_THIRD)
 
     # Panel 2: link margin, with the dashed sensitivity line at 0 dB
-    fig2, ax = plt.subplots(figsize=FIGSIZE)
+    fig2, ax = new_axes(FIGSIZE_PANEL)
     ax.plot(t, res.link_margin_db, "-", color=C_BLUE, lw=1.5)
     ax.axhline(0, ls="--", color=C_GRAY, lw=1.0)
-    ax.text(t[0], 0, " sensitivity", color=C_GRAY, fontsize=9,
-            ha="left", va="bottom")
+    # yline's default label placement: right end, above the line
+    ax.text(1, 0, "sensitivity ", color=C_GRAY, fontsize=9, ha="right",
+            va="bottom", transform=ax.get_yaxis_transform())
     ax.set_xlabel("Time (s)\nZenith = 0")
     ax.set_ylabel("Link margin (dB)")
-    ax.set_xlim(t[0], t[-1])
     fig2.tight_layout()
     show_fig(fig2, c_plot2, WIDTH_THIRD)
 
     # Panel 3: pass geometry — elevation with the Rician K factor it drives
-    fig3, ax = plt.subplots(figsize=FIGSIZE)
+    fig3, ax = new_axes(FIGSIZE_PANEL)
     ax.plot(t, res.elevation_deg, "-", color=C_BLUE, lw=1.5)
     ax.set_xlabel("Time (s)\nZenith = 0")
     ax.set_ylabel("Elevation (deg)", color=C_BLUE)
     ax.tick_params(axis="y", colors=C_BLUE)
-    ax.set_xlim(t[0], t[-1])
     ax.set_ylim(0, 90)
+    # Right-hand axis for K, like MATLAB's yyaxis: it needs its own spine,
+    # and the grid stays tied to the left axis only
     ax_k = ax.twinx()
     ax_k.plot(t, rician_k(res.elevation_deg), "-", color=C_ORANGE, lw=1.5)
     ax_k.set_ylabel("Rician K factor", color=C_ORANGE)
+    ax_k.spines["right"].set_visible(True)
+    ax_k.yaxis.set_major_locator(MaxNLocator(nbins=10, steps=[1, 2, 5, 10]))
     ax_k.tick_params(axis="y", colors=C_ORANGE, direction="in")
     ax_k.grid(False)
     fig3.tight_layout()
@@ -275,26 +371,80 @@ with tab_sweep:
     else:  # b_khz
         sweep_vals = BW_KHZ
 
-    p = param_inputs("sweep", exclude=(sweep_key, "ldro"))
+    # Mission and link budget parameters are shared by all scenarios
+    p = param_inputs("sweep", exclude=(sweep_key,), lora=False)
 
-    # One line per LDRO state; LDRO-off points are skipped where LDRO is
-    # mandated (symbol time 2^SF / B reaching 16.38 ms).
-    pdr_on = np.full(len(sweep_vals), np.nan)
-    pdr_off = np.full(len(sweep_vals), np.nan)
+    # Scenario list, one line each, varying the LoRa parameters. It resets
+    # to the matching paper figure's scenarios whenever the swept parameter
+    # changes. Ids are never reused, so each scenario's widget state stays
+    # with it when another one is removed.
+    ss = st.session_state
+    if ss.get("scen_for") != sweep_key:
+        ss.scen_next = ss.get("scen_next", 0)
+        ss.scen = []
+        for s in DEFAULT_SCENARIOS[sweep_key]:
+            ss.scen.append({**s, "id": ss.scen_next})
+            ss.scen_next += 1
+        ss.scen_for = sweep_key
+
+    def add_scenario():
+        ss.scen.append({**ss.scen[-1], "id": ss.scen_next})
+        ss.scen_next += 1
+
+    def remove_scenario(sid):
+        ss.scen = [s for s in ss.scen if s["id"] != sid]
+
+    lora_fields = [k for k in ("sf", "b_khz") if k != sweep_key]
+    c_scen, c_plot = st.columns(2, gap="large")
+    with c_scen:
+        for i, s in enumerate(ss.scen):
+            first = i == 0
+            vis = "visible" if first else "collapsed"
+            cols = st.columns([2] * len(lora_fields) + [1, 1.6],
+                              vertical_alignment="bottom")
+            for col, k in zip(cols, lora_fields):
+                options = SF_VALUES if k == "sf" else BW_KHZ
+                s[k] = col.selectbox(
+                    PARAM_LABELS[k], options, index=options.index(s[k]),
+                    key=f"sc{s['id']}_{k}", label_visibility=vis)
+            c_ldro, c_rm = cols[-2:]
+            if first:
+                c_ldro.markdown(
+                    f'<p style="font-size:14px; margin-bottom:0.25rem">'
+                    f'{PARAM_LABELS["ldro"]}</p>',
+                    unsafe_allow_html=True)
+            s["ldro"] = c_ldro.toggle(
+                PARAM_LABELS["ldro"], value=s["ldro"],
+                key=f"sc{s['id']}_ldro", label_visibility="collapsed")
+            if not first:
+                c_rm.button("Remove", key=f"sc{s['id']}_rm",
+                            on_click=remove_scenario, args=(s["id"],))
+        st.button("Add scenario", on_click=add_scenario)
+
+    curves = []
     with st.spinner("Sweeping..."):
-        for i, v in enumerate(sweep_vals):
-            q = {**p, sweep_key: v}
-            pdr_on[i] = run_pass(**q, ldro=True).pdr * 100
-            if 2 ** q["sf"] / q["b_khz"] < 16.38:
-                pdr_off[i] = run_pass(**q, ldro=False).pdr * 100
+        for s in ss.scen:
+            sp = {k: s[k] for k in ("sf", "b_khz", "ldro") if k != sweep_key}
+            curves.append([run_pass(**p, **sp, **{sweep_key: v}).pdr * 100
+                           for v in sweep_vals])
 
-    # Solid line for LDRO off, dashed for LDRO on, as in sweep_pdr_vs_*.m
-    fig, ax = plt.subplots(figsize=FIGSIZE)
-    if not np.all(np.isnan(pdr_off)):
-        ax.plot(sweep_vals, pdr_off, "-", marker="o", color=C_BLUE,
-                mfc=C_BLUE, lw=1.6, ms=5, label="LDRO off")
-    ax.plot(sweep_vals, pdr_on, "--", marker="o", color=C_ORANGE,
-            mfc=C_ORANGE, lw=1.6, ms=5, label="LDRO on")
+    # Styled as in sweep_pdr_vs_*.m: one color per (SF, B) combination, and
+    # a dashed line for LDRO on when the same combination also appears with
+    # LDRO off (Figs. 6 and 7), solid otherwise (Figs. 3 to 5).
+    def lora_key(s):
+        return tuple(s[k] for k in lora_fields)
+
+    groups = list(dict.fromkeys(lora_key(s) for s in ss.scen))
+    fig, ax = new_axes()
+    for s, pdr in zip(ss.scen, curves):
+        color = SWEEP_PALETTE[groups.index(lora_key(s)) % len(SWEEP_PALETTE)]
+        has_off_twin = s["ldro"] and any(
+            not o["ldro"] and lora_key(o) == lora_key(s) for o in ss.scen)
+        label = [f"SF={s['sf']}"] if "sf" in lora_fields else []
+        label += [f"B={s['b_khz']:g} kHz"] if "b_khz" in lora_fields else []
+        label += ["LDRO on" if s["ldro"] else "LDRO off"]
+        ax.plot(sweep_vals, pdr, "--" if has_off_twin else "-", marker="o",
+                color=color, mfc=color, lw=1.6, ms=5, label=", ".join(label))
     if sweep_key == "b_khz":
         ax.set_xscale("log")
         # Ticks on the bandwidth values themselves, as in sweep_pdr_vs_bw.m
@@ -308,7 +458,7 @@ with tab_sweep:
     ax.set_ylim(0, 100)
     ax.legend(loc=LEGEND_LOC[sweep_key])
     fig.tight_layout()
-    show_fig(fig)
+    show_fig(fig, c_plot)
 
 # --------------------------------------------------------------- Tab 3
 with tab_ds:
@@ -341,7 +491,7 @@ with tab_ds:
     sf_colors = plt.cm.turbo(np.linspace(0, 1, len(SF_VALUES)))
     bw_markers = ["o", "s", "^", "d", "v"]
 
-    fig, ax = plt.subplots(figsize=FIGSIZE)
+    fig, ax = new_axes(FIGSIZE_DS)
     for i, (sf, b, ldro) in enumerate(configs):
         if not viable[i]:
             continue
@@ -357,6 +507,9 @@ with tab_ds:
                        alpha=0.55)
 
     ax.set_xscale("log")
+    # MATLAB draws dotted minor grid lines between the decades of this log
+    # axis (MinorGridLineStyle ':', MinorGridAlpha 0.25)
+    ax.grid(True, which="minor", axis="x", linestyle=":", alpha=0.25)
     ax.set_xlim(90, 2e4)
     ax.set_ylim(0, 100)
     ax.set_xlabel("Bit rate (bps)")
@@ -377,6 +530,6 @@ with tab_ds:
                label="LDRO off"),
     ]
     ax.legend(handles=legend_handles, loc="center left",
-              bbox_to_anchor=(1.02, 0.5), fontsize=9)
+              bbox_to_anchor=(1.02, 0.5))
     fig.tight_layout()
     show_fig(fig, width=WIDTH_LEGEND)
