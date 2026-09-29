@@ -14,11 +14,11 @@ addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 % figure where the Pareto markers are close enough that text overlaps.
 show_labels = false;
 
-% Scenario (matches pdr_stress_demo.m and design_space_heatmap.m)
+% Scenario: the paper's baseline mission parameters (Fig. 8)
 E    = 1;
-F_C  = 2450;
-H    = 550;
-P_L  = 50;
+F_C  = 915;
+H    = 1000;
+P_L  = 100;
 CR   = 1;   % Coding rate index (4/5); fixed throughout, see MODEL_NOTES
 
 SF_values = 7:12;

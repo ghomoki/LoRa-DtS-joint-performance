@@ -7,26 +7,20 @@
 clear;
 addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
 
-E    = 1;          % Minimum elevation angle  (deg) — full pass
-B    = 62.5;       % Bandwidth                (kHz) — narrow → low static threshold
+E    = 1;          % Minimum elevation angle  (deg)
+B    = 62.5;       % Bandwidth                (kHz)
 F_C  = 915;        % Carrier frequency        (MHz)
-LDRO = false;      % Off → dynamic Doppler bites
-SF   = 8;          % Spreading factor — low enough that dyn threshold isn't crushed
-P_L  = 100;         % Application payload      (bytes)
-H    = 1000;        % Orbital altitude         (km) — low LEO → high Doppler rate
-
-% Modest link budget: positive margin near zenith, marginal near horizon.
-opts = { ...
-    'P_tx_dbm', 22, ...    % 158 mW
-    'G_t',       3, ...    % dBi
-    'G_r',       3};       % dBi
+LDRO = false;      % Low data rate optimization 
+SF   = 8;          % Spreading factor
+P_L  = 100;        % Application payload      (bytes)
+H    = 1000;       % Orbital altitude         (km)
 
 fprintf('Running 3-failure-mode scenario: SF=%d, B=%g kHz, F_C=%g MHz, H=%g km\n', ...
     SF, B, F_C, H);
 
 tic;
 [pdr, L_static, L_dynamic, L_joint, results] = ...
-    packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H, opts{:});
+    packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H);
 elapsed = toc;
 
 fprintf('PDR = %.4f over %d packets (%.1f s elapsed).\n', ...
@@ -45,9 +39,6 @@ margin = results.("Link margin (dB)");
 
 i_static_fail  = find(L_static);
 i_dynamic_fail = find(L_dynamic);
-
-figure;
-%tl = tiledlayout(2, 1, TileSpacing='compact');
 
 % Panel 1: Reception probability
 figure;
