@@ -268,13 +268,32 @@ def param_inputs(tab, exclude=(), lora=True):
     return vals
 
 
+def tab_key(tab):
+    """Widget key prefix for a tab's inputs. It carries a version number
+    that Reset bumps, so the tab's widgets are rebuilt at their defaults
+    (deleting widget state alone leaves the old value displayed)."""
+    return f"{tab}{st.session_state.get(f'ver_{tab}', 0)}"
+
+
+def reset_button(tab, on_reset=None):
+    """Reset button that reverts the tab's inputs to the paper baseline."""
+    def reset():
+        st.session_state[f"ver_{tab}"] = st.session_state.get(f"ver_{tab}", 0) + 1
+        if on_reset:
+            on_reset()
+
+    st.button("Reset", key=f"reset_{tab}", on_click=reset,
+              help="Revert to the paper's baseline scenario")
+
+
 tab_single, tab_sweep, tab_ds = st.tabs(
     ["Single-pass analysis", "Parameter sweep", "Design space exploration"]
 )
 
 # --------------------------------------------------------------- Tab 1
 with tab_single:
-    p = param_inputs("single")
+    reset_button("single")
+    p = param_inputs(tab_key("single"))
     res = run_pass(**p)
     p_success = ~res.l_static * ~res.l_dynamic * res.p_link
     t = res.time_s
@@ -345,6 +364,11 @@ with tab_single:
 with tab_sweep:
     N_SWEEP = 15
 
+    # Reset keeps the chosen sweep parameter, but restores the sweep range,
+    # the shared inputs and the scenario list, which is rebuilt from the
+    # figure's defaults once "scen_for" is gone
+    reset_button("sweep", on_reset=lambda: st.session_state.pop("scen_for", None))
+    tk = tab_key("sweep")
     c_sel, c_min, c_max = st.columns([2, 1, 1])
     sweep_key = c_sel.selectbox(
         "Parameter to sweep", [k for k in PARAM_LABELS if k != "ldro"],
@@ -354,16 +378,16 @@ with tab_sweep:
     # discrete grid otherwise.
     # Default ranges are those swept in figures 3 to 5 of the paper
     if sweep_key == "f_c_mhz":
-        lo = c_min.number_input("Min", 100.0, 3000.0, 433.0, key="sw_lo_f")
-        hi = c_max.number_input("Max", 100.0, 3000.0, 2400.0, key="sw_hi_f")
+        lo = c_min.number_input("Min", 100.0, 3000.0, 433.0, key=f"{tk}_lo_f")
+        hi = c_max.number_input("Max", 100.0, 3000.0, 2400.0, key=f"{tk}_hi_f")
         sweep_vals = list(np.linspace(lo, hi, N_SWEEP))
     elif sweep_key == "h_km":
-        lo = c_min.number_input("Min", 300, 2500, 300, key="sw_lo_h")
-        hi = c_max.number_input("Max", 300, 2500, 2000, key="sw_hi_h")
+        lo = c_min.number_input("Min", 300, 2500, 300, key=f"{tk}_lo_h")
+        hi = c_max.number_input("Max", 300, 2500, 2000, key=f"{tk}_hi_h")
         sweep_vals = list(np.linspace(lo, hi, N_SWEEP))
     elif sweep_key == "p_l":
-        lo = c_min.number_input("Min", 1, 255, 10, key="sw_lo_p")
-        hi = c_max.number_input("Max", 1, 255, 200, key="sw_hi_p")
+        lo = c_min.number_input("Min", 1, 255, 10, key=f"{tk}_lo_p")
+        hi = c_max.number_input("Max", 1, 255, 200, key=f"{tk}_hi_p")
         sweep_vals = sorted(set(
             int(v) for v in np.linspace(lo, hi, N_SWEEP).round()))
     elif sweep_key == "sf":
@@ -372,7 +396,7 @@ with tab_sweep:
         sweep_vals = BW_KHZ
 
     # Mission and link budget parameters are shared by all scenarios
-    p = param_inputs("sweep", exclude=(sweep_key,), lora=False)
+    p = param_inputs(tk, exclude=(sweep_key,), lora=False)
 
     # Scenario list, one line each, varying the LoRa parameters. It resets
     # to the matching paper figure's scenarios whenever the swept parameter
@@ -400,7 +424,7 @@ with tab_sweep:
         for i, s in enumerate(ss.scen):
             first = i == 0
             vis = "visible" if first else "collapsed"
-            cols = st.columns([2] * len(lora_fields) + [1, 1.6],
+            cols = st.columns([2] * len(lora_fields) + [1, 0.8],
                               vertical_alignment="bottom")
             for col, k in zip(cols, lora_fields):
                 options = SF_VALUES if k == "sf" else BW_KHZ
@@ -417,9 +441,9 @@ with tab_sweep:
                 PARAM_LABELS["ldro"], value=s["ldro"],
                 key=f"sc{s['id']}_ldro", label_visibility="collapsed")
             if not first:
-                c_rm.button("Remove", key=f"sc{s['id']}_rm",
+                c_rm.button("✕", key=f"sc{s['id']}_rm", help="Remove scenario",
                             on_click=remove_scenario, args=(s["id"],))
-        st.button("Add scenario", on_click=add_scenario)
+        st.button("+", help="Add scenario", on_click=add_scenario)
 
     curves = []
     with st.spinner("Sweeping..."):
@@ -462,7 +486,8 @@ with tab_sweep:
 
 # --------------------------------------------------------------- Tab 3
 with tab_ds:
-    p = param_inputs("ds", lora=False)
+    reset_button("ds")
+    p = param_inputs(tab_key("ds"), lora=False)
 
     # LDRO is mandatory when the symbol time reaches 16.38 ms; elsewhere
     # both LDRO choices are separate design points (as in pareto_front.m).
