@@ -1,5 +1,7 @@
 """Interactive web front-end for the LoRa Direct-to-Satellite PDR model."""
 
+import io
+
 import matplotlib.pyplot as plt
 import numpy as np
 import streamlit as st
@@ -19,10 +21,18 @@ st.title(
 E_MIN = 1.0  # Minimum elevation angle (deg)
 CR = 1       # Coding rate index (4/5)
 
+# SX1276 modulation parameter space, as stated in section 2 of the paper
 SF_VALUES = [7, 8, 9, 10, 11, 12]
-BW_KHZ = [7.8, 10.4, 15.6, 20.8, 31.25, 41.7, 62.5, 125.0, 250.0, 500.0]
+BW_KHZ = [7.81, 15.63, 31.25, 62.5, 125.0, 250.0, 500.0]
 # Bandwidth grid of the design-space exploration (matches pareto_front.m)
 DS_BW_KHZ = [31.25, 62.5, 125.0, 250.0, 500.0]
+
+# Baseline scenario of the paper (section 3.1): PDR = 13.2%, DR = 1.56 kbps
+DEF_F_C_MHZ = 915.0
+DEF_H_KM = 1000
+DEF_P_L = 100
+DEF_SF = 8
+DEF_B_KHZ = 62.5
 
 # Line colors of the MATLAB figures in scripts/, for figure parity with
 # the paper. C_BLUE / C_ORANGE / C_GREEN are the sweep-script palette.
@@ -33,12 +43,12 @@ C_GRAY = "#808080"      # [0.50 0.50 0.50], sensitivity line
 C_PLINK = "#05CFE6"     # [5 207 230]/256, P_link
 C_PSUCCESS = "#30961A"  # [48 150 26]/256, P_success
 
-# MATLAB's default axes appearance: 4:3 figure on a 0.94 gray canvas,
-# white plot box with all four sides drawn, inward ticks, and a light
+# MATLAB's default axes appearance, as exported for the paper: white
+# canvas, plot box with all four sides drawn, inward ticks, and a light
 # solid grid painted under the data.
 plt.rcParams.update({
-    "figure.facecolor": "#F0F0F0",
-    "figure.dpi": 140,
+    "figure.facecolor": "white",
+    "savefig.facecolor": "white",
     "axes.facecolor": "white",
     "axes.edgecolor": "#262626",
     "axes.labelcolor": "#262626",
@@ -65,9 +75,22 @@ plt.rcParams.update({
 })
 
 # MATLAB's default figure is 560x420 px. Reproducing that size at 10 pt
-# text keeps the label-to-axes proportions identical to the paper figures;
-# the raised dpi only renders it at more pixels for the browser.
+# text keeps the label-to-axes proportions identical to the paper figures.
 FIGSIZE = (5.6, 4.2)
+
+# Displayed width in CSS pixels. Fixed rather than stretched to the
+# column, so the figures stay legible instead of growing with the window.
+WIDTH_WIDE = 560    # single figure, MATLAB's own export width
+WIDTH_THIRD = 460   # three panels side by side
+WIDTH_LEGEND = 700  # design space, whose outside legend takes a third
+
+
+def show_fig(fig, container=None, width=WIDTH_WIDE):
+    """Render fig at a fixed display width, oversampled for sharpness."""
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=200)
+    plt.close(fig)
+    (container or st).image(buf, width=width)
 
 PARAM_LABELS = {
     "f_c_mhz": "Carrier frequency (MHz)",
@@ -122,25 +145,27 @@ def param_inputs(tab, exclude=(), lora=True):
         if "f_c_mhz" not in exclude:
             vals["f_c_mhz"] = c1.number_input(
                 PARAM_LABELS["f_c_mhz"], min_value=100.0, max_value=3000.0,
-                value=868.0, step=1.0, key=f"{tab}_f_c")
+                value=DEF_F_C_MHZ, step=1.0, key=f"{tab}_f_c")
         if "h_km" not in exclude:
             vals["h_km"] = c2.number_input(
                 PARAM_LABELS["h_km"], min_value=300, max_value=2500,
-                value=550, step=10, key=f"{tab}_h")
+                value=DEF_H_KM, step=10, key=f"{tab}_h")
         if "p_l" not in exclude:
             vals["p_l"] = c3.number_input(
                 PARAM_LABELS["p_l"], min_value=1, max_value=255,
-                value=50, step=1, key=f"{tab}_p_l")
+                value=DEF_P_L, step=1, key=f"{tab}_p_l")
 
     if lora:
         with lora_col:
             c4, c5, c6 = st.columns(3)
             if "sf" not in exclude:
                 vals["sf"] = c4.selectbox(
-                    PARAM_LABELS["sf"], SF_VALUES, index=3, key=f"{tab}_sf")
+                    PARAM_LABELS["sf"], SF_VALUES,
+                    index=SF_VALUES.index(DEF_SF), key=f"{tab}_sf")
             if "b_khz" not in exclude:
                 vals["b_khz"] = c5.selectbox(
-                    PARAM_LABELS["b_khz"], BW_KHZ, index=7, key=f"{tab}_b")
+                    PARAM_LABELS["b_khz"], BW_KHZ,
+                    index=BW_KHZ.index(DEF_B_KHZ), key=f"{tab}_b")
             if "ldro" not in exclude:
                 # Label above the switch, matching the other widgets
                 c6.markdown(
@@ -190,8 +215,7 @@ with tab_single:
     ax.set_ylim(-0.05, 1.05)
     ax.legend(loc="upper right")
     fig1.tight_layout()
-    c_plot1.pyplot(fig1)
-    plt.close(fig1)
+    show_fig(fig1, c_plot1, WIDTH_THIRD)
 
     # Panel 2: link margin, with the dashed sensitivity line at 0 dB
     fig2, ax = plt.subplots(figsize=FIGSIZE)
@@ -203,8 +227,7 @@ with tab_single:
     ax.set_ylabel("Link margin (dB)")
     ax.set_xlim(t[0], t[-1])
     fig2.tight_layout()
-    c_plot2.pyplot(fig2)
-    plt.close(fig2)
+    show_fig(fig2, c_plot2, WIDTH_THIRD)
 
     # Panel 3: pass geometry — elevation with the Rician K factor it drives
     fig3, ax = plt.subplots(figsize=FIGSIZE)
@@ -220,8 +243,7 @@ with tab_single:
     ax_k.tick_params(axis="y", colors=C_ORANGE, direction="in")
     ax_k.grid(False)
     fig3.tight_layout()
-    c_plot3.pyplot(fig3)
-    plt.close(fig3)
+    show_fig(fig3, c_plot3, WIDTH_THIRD)
 
 # --------------------------------------------------------------- Tab 2
 with tab_sweep:
@@ -234,17 +256,18 @@ with tab_sweep:
 
     # Sweep grid: min/max inputs for the continuous parameters, the full
     # discrete grid otherwise.
+    # Default ranges are those swept in figures 3 to 5 of the paper
     if sweep_key == "f_c_mhz":
-        lo = c_min.number_input("Min", 100.0, 3000.0, 400.0, key="sw_lo_f")
-        hi = c_max.number_input("Max", 100.0, 3000.0, 2450.0, key="sw_hi_f")
+        lo = c_min.number_input("Min", 100.0, 3000.0, 433.0, key="sw_lo_f")
+        hi = c_max.number_input("Max", 100.0, 3000.0, 2400.0, key="sw_hi_f")
         sweep_vals = list(np.linspace(lo, hi, N_SWEEP))
     elif sweep_key == "h_km":
         lo = c_min.number_input("Min", 300, 2500, 300, key="sw_lo_h")
-        hi = c_max.number_input("Max", 300, 2500, 2500, key="sw_hi_h")
+        hi = c_max.number_input("Max", 300, 2500, 2000, key="sw_hi_h")
         sweep_vals = list(np.linspace(lo, hi, N_SWEEP))
     elif sweep_key == "p_l":
         lo = c_min.number_input("Min", 1, 255, 10, key="sw_lo_p")
-        hi = c_max.number_input("Max", 1, 255, 250, key="sw_hi_p")
+        hi = c_max.number_input("Max", 1, 255, 200, key="sw_hi_p")
         sweep_vals = sorted(set(
             int(v) for v in np.linspace(lo, hi, N_SWEEP).round()))
     elif sweep_key == "sf":
@@ -274,11 +297,8 @@ with tab_sweep:
             mfc=C_ORANGE, lw=1.6, ms=5, label="LDRO on")
     if sweep_key == "b_khz":
         ax.set_xscale("log")
-        # Ticks on the bandwidth values themselves, as in sweep_pdr_vs_bw.m.
-        # Rotated because the app offers 10 bandwidths where the script
-        # plots 7, and upright labels would overlap.
-        ax.set_xticks(sweep_vals, [f"{b:g}" for b in sweep_vals],
-                      rotation=45, ha="right")
+        # Ticks on the bandwidth values themselves, as in sweep_pdr_vs_bw.m
+        ax.set_xticks(sweep_vals, [f"{b:g}" for b in sweep_vals])
         ax.minorticks_off()
     elif sweep_key == "sf":
         ax.set_xticks(sweep_vals)
@@ -288,8 +308,7 @@ with tab_sweep:
     ax.set_ylim(0, 100)
     ax.legend(loc=LEGEND_LOC[sweep_key])
     fig.tight_layout()
-    st.columns(2)[0].pyplot(fig)
-    plt.close(fig)
+    show_fig(fig)
 
 # --------------------------------------------------------------- Tab 3
 with tab_ds:
@@ -360,5 +379,4 @@ with tab_ds:
     ax.legend(handles=legend_handles, loc="center left",
               bbox_to_anchor=(1.02, 0.5), fontsize=9)
     fig.tight_layout()
-    st.columns([3, 2])[0].pyplot(fig)
-    plt.close(fig)
+    show_fig(fig, width=WIDTH_LEGEND)
