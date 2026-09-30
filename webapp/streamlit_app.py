@@ -43,14 +43,6 @@ DEF_G_DBI = 2.0
 # +20 dBm high-power mode on PA_BOOST. +18 and +19 dBm are not available.
 P_TX_DBM = list(range(-4, 18)) + [20]
 
-# Link budget inputs; kept apart from PARAM_LABELS so they are not offered
-# as sweep parameters
-LINK_LABELS = {
-    "p_tx_dbm": "Tx power (dBm)",
-    "g_t": "Tx antenna gain (dBi)",
-    "g_r": "Rx antenna gain (dBi)",
-}
-
 # Starting scenario lists of the sweep tab: those of the paper's figures
 # (sweep_pdr_vs_*.m). The swept parameter's own entry is ignored.
 _MISSION_SWEEP_SCENARIOS = [
@@ -125,13 +117,14 @@ plt.rcParams.update({
 # Aspect ratio of the paper's exported figures (figures/*_fix.png, about
 # 1.56:1). The single-figure size also matches their text-to-plot scale.
 FIGSIZE = (7.0, 4.5)        # parameter sweep
-FIGSIZE_PANEL = (5.6, 3.6)  # single-pass panels, three side by side
+FIGSIZE_PANEL = (6.2, 3.98) # single-pass panels, 2 x 2 grid
 FIGSIZE_DS = (7.0, 4.4)     # design space, legend outside
 
 # Displayed width in CSS pixels. Fixed rather than stretched to the
 # column, so the figures stay legible instead of growing with the window.
+# About 100 px per figure inch, so text is the same size on every tab.
 WIDTH_WIDE = 700
-WIDTH_THIRD = 460
+WIDTH_PANEL = 620
 WIDTH_LEGEND = 760
 
 
@@ -147,18 +140,55 @@ def new_axes(figsize=FIGSIZE):
     return fig, ax
 
 
-def show_fig(fig, container=None, width=WIDTH_WIDE):
-    """Render fig at a fixed display width. Embedded as an <img> rather than
+def right_axis(ax, color):
+    """Second y axis on the right, like MATLAB's yyaxis: its own spine and
+    colored ticks, the same tick density, and the grid left to the left
+    axis only."""
+    ax_r = ax.twinx()
+    ax_r.spines["right"].set_visible(True)
+    ax_r.yaxis.set_major_locator(MaxNLocator(nbins=10, steps=[1, 2, 5, 10]))
+    ax_r.yaxis.set_major_formatter(StrMethodFormatter("{x:g}"))
+    ax_r.tick_params(axis="y", colors=color, direction="in")
+    ax_r.grid(False)
+    return ax_r
+
+
+def show_fig(fig, container=None, width=WIDTH_WIDE, caption=None):
+    """Render fig at a fixed display width, with an optional caption (HTML)
+    beneath it at the same width. Embedded as an <img> rather than
     st.image, which would downsample it to that width on the server; this
     way the 200 dpi render stays sharp on high-density screens."""
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=200)
     plt.close(fig)
     data = base64.b64encode(buf.getvalue()).decode()
-    (container or st).markdown(
-        f'<img src="data:image/png;base64,{data}" '
-        f'style="width:{width}px; max-width:100%">',
-        unsafe_allow_html=True)
+    html = (f'<img src="data:image/png;base64,{data}" '
+            f'style="width:{width}px; max-width:100%">')
+    if caption:
+        html += (f'<div style="max-width:{width}px; font-size:0.875rem; '
+                 f'color:rgba(49,51,63,0.7); margin-top:0.25rem">'
+                 f'{caption}</div>')
+    (container or st).markdown(html, unsafe_allow_html=True)
+
+
+# Figure captions: the paper's wording, with the values shown filled in
+_SYMBOLS = {"f_c_mhz": "<i>F</i><sub><i>C</i></sub>", "h_km": "<i>h</i>",
+            "p_l": "PL", "sf": "SF", "b_khz": "<i>B</i>",
+            "p_tx_dbm": "<i>P</i><sub>Tx</sub>",
+            "g_t": "<i>G</i><sub>Tx</sub>", "g_r": "<i>G</i><sub>Rx</sub>"}
+_UNITS = {"f_c_mhz": " MHz", "h_km": " km", "p_l": " bytes",
+          "sf": "", "b_khz": " kHz",
+          "p_tx_dbm": " dBm", "g_t": " dBi", "g_r": " dBi"}
+
+
+def caption_values(p, keys, extra=()):
+    """'F_C = 915 MHz, h = 1000 km, and PL = 100 bytes' for the given keys
+    (plus any extra items), joined as in the paper's captions."""
+    items = [f"{_SYMBOLS[k]} = {p[k]:g}{_UNITS[k]}" for k in keys]
+    items += list(extra)
+    if len(items) <= 2:
+        return " and ".join(items)
+    return ", ".join(items[:-1]) + ", and " + items[-1]
 
 PARAM_LABELS = {
     "f_c_mhz": "Carrier frequency (MHz)",
@@ -167,6 +197,20 @@ PARAM_LABELS = {
     "sf": "Spreading factor",
     "b_khz": "Bandwidth (kHz)",
     "ldro": "LDRO",
+}
+
+# Input widget labels, led by the paper's symbol for each parameter (widget
+# labels render LaTeX; PARAM_LABELS stays plain for the sweep dropdown,
+# whose options cannot)
+WIDGET_LABELS = {
+    "f_c_mhz": "$F_C$, Carrier frequency (MHz)",
+    "h_km": "$h$, Altitude (km)",
+    "p_l": "PL, Payload length (bytes)",
+    "sf": "SF, Spreading factor",
+    "b_khz": "$B$, Bandwidth (kHz)",
+    "p_tx_dbm": r"$P_\mathrm{Tx}$, Tx power (dBm)",
+    "g_t": r"$G_\mathrm{Tx}$, Tx antenna gain (dBi)",
+    "g_r": r"$G_\mathrm{Rx}$, Rx antenna gain (dBi)",
 }
 
 # Axis labels and legend placement of the matching scripts/sweep_pdr_vs_*.m
@@ -205,13 +249,13 @@ def link_inputs(tab, container):
     c1, c2, c3 = container.columns(3)
     return {
         "p_tx_dbm": c1.selectbox(
-            LINK_LABELS["p_tx_dbm"], P_TX_DBM,
+            WIDGET_LABELS["p_tx_dbm"], P_TX_DBM,
             index=P_TX_DBM.index(DEF_P_TX_DBM), key=f"{tab}_p_tx"),
         "g_t": c2.number_input(
-            LINK_LABELS["g_t"], min_value=-10.0, max_value=30.0,
+            WIDGET_LABELS["g_t"], min_value=-10.0, max_value=30.0,
             value=DEF_G_DBI, step=0.5, format="%.1f", key=f"{tab}_g_t"),
         "g_r": c3.number_input(
-            LINK_LABELS["g_r"], min_value=-10.0, max_value=30.0,
+            WIDGET_LABELS["g_r"], min_value=-10.0, max_value=30.0,
             value=DEF_G_DBI, step=0.5, format="%.1f", key=f"{tab}_g_r"),
     }
 
@@ -229,15 +273,15 @@ def param_inputs(tab, exclude=(), lora=True):
         c1, c2, c3 = st.columns(3)
         if "f_c_mhz" not in exclude:
             vals["f_c_mhz"] = c1.number_input(
-                PARAM_LABELS["f_c_mhz"], min_value=100.0, max_value=3000.0,
+                WIDGET_LABELS["f_c_mhz"], min_value=100.0, max_value=3000.0,
                 value=DEF_F_C_MHZ, step=1.0, key=f"{tab}_f_c")
         if "h_km" not in exclude:
             vals["h_km"] = c2.number_input(
-                PARAM_LABELS["h_km"], min_value=300, max_value=2500,
+                WIDGET_LABELS["h_km"], min_value=300, max_value=2500,
                 value=DEF_H_KM, step=10, key=f"{tab}_h")
         if "p_l" not in exclude:
             vals["p_l"] = c3.number_input(
-                PARAM_LABELS["p_l"], min_value=1, max_value=255,
+                WIDGET_LABELS["p_l"], min_value=1, max_value=255,
                 value=DEF_P_L, step=1, key=f"{tab}_p_l")
 
     if lora:
@@ -245,11 +289,11 @@ def param_inputs(tab, exclude=(), lora=True):
             c4, c5, c6 = st.columns(3)
             if "sf" not in exclude:
                 vals["sf"] = c4.selectbox(
-                    PARAM_LABELS["sf"], SF_VALUES,
+                    WIDGET_LABELS["sf"], SF_VALUES,
                     index=SF_VALUES.index(DEF_SF), key=f"{tab}_sf")
             if "b_khz" not in exclude:
                 vals["b_khz"] = c5.selectbox(
-                    PARAM_LABELS["b_khz"], BW_KHZ,
+                    WIDGET_LABELS["b_khz"], BW_KHZ,
                     index=BW_KHZ.index(DEF_B_KHZ), key=f"{tab}_b")
             if "ldro" not in exclude:
                 # Label above the switch, matching the other widgets
@@ -302,7 +346,10 @@ with tab_single:
     m1.metric("PDR", f"{res.pdr * 100:.1f} %")
     m2.metric("Data rate", f"{bit_rate_bps(p['sf'], p['b_khz'], p['ldro']):.0f} bps")
 
-    c_plot1, c_plot2, c_plot3 = st.columns(3)
+    # 2 x 2 grid: reception probability and link margin on top, pass
+    # geometry and Doppler below
+    c_plot1, c_plot2 = st.columns(2)
+    c_plot3, c_plot4 = st.columns(2)
 
     # Panel 1: reception probability (scripts/pdr_three_failure_modes.m).
     # The Doppler markers are only drawn — and only appear in the legend —
@@ -327,7 +374,12 @@ with tab_single:
     ax.set_ylim(-0.05, 1.05)
     ax.legend(loc="upper right")
     fig1.tight_layout()
-    show_fig(fig1, c_plot1, WIDTH_THIRD)
+    show_fig(fig1, c_plot1, WIDTH_PANEL, caption=(
+        "Packet reception probability and failure modes for a full "
+        "satellite pass at "
+        + caption_values(p, ["f_c_mhz", "h_km", "p_l", "sf", "b_khz"],
+                         extra=[f"LDRO = {'on' if p['ldro'] else 'off'}"])
+        + "."))
 
     # Panel 2: link margin, with the dashed sensitivity line at 0 dB
     fig2, ax = new_axes(FIGSIZE_PANEL)
@@ -339,7 +391,11 @@ with tab_single:
     ax.set_xlabel("Time (s)\nZenith = 0")
     ax.set_ylabel("Link margin (dB)")
     fig2.tight_layout()
-    show_fig(fig2, c_plot2, WIDTH_THIRD)
+    # Not paper figures: short captions in the same style. The link budget
+    # values are stated here, as the Fig. 2 caption (like the paper's) omits them.
+    show_fig(fig2, c_plot2, WIDTH_PANEL, caption=(
+        "Link margin above receiver sensitivity for the same pass, with "
+        + caption_values(p, ["p_tx_dbm", "g_t", "g_r"]) + "."))
 
     # Panel 3: pass geometry — elevation with the Rician K factor it drives
     fig3, ax = new_axes(FIGSIZE_PANEL)
@@ -348,17 +404,28 @@ with tab_single:
     ax.set_ylabel("Elevation (deg)", color=C_BLUE)
     ax.tick_params(axis="y", colors=C_BLUE)
     ax.set_ylim(0, 90)
-    # Right-hand axis for K, like MATLAB's yyaxis: it needs its own spine,
-    # and the grid stays tied to the left axis only
-    ax_k = ax.twinx()
+    ax_k = right_axis(ax, C_ORANGE)
     ax_k.plot(t, rician_k(res.elevation_deg), "-", color=C_ORANGE, lw=1.5)
     ax_k.set_ylabel("Rician K factor", color=C_ORANGE)
-    ax_k.spines["right"].set_visible(True)
-    ax_k.yaxis.set_major_locator(MaxNLocator(nbins=10, steps=[1, 2, 5, 10]))
-    ax_k.tick_params(axis="y", colors=C_ORANGE, direction="in")
-    ax_k.grid(False)
     fig3.tight_layout()
-    show_fig(fig3, c_plot3, WIDTH_THIRD)
+    show_fig(fig3, c_plot3, WIDTH_PANEL, caption=(
+        "Satellite elevation angle and the resulting Rician <i>K</i> factor "
+        "over the same pass at " + caption_values(p, ["h_km"]) + "."))
+
+    # Panel 4: Doppler shift and its rate, which drive the static and
+    # dynamic Doppler failures
+    fig4, ax = new_axes(FIGSIZE_PANEL)
+    ax.plot(t, res.doppler_shift_hz / 1e3, "-", color=C_BLUE, lw=1.5)
+    ax.set_xlabel("Time (s)\nZenith = 0")
+    ax.set_ylabel("Doppler shift (kHz)", color=C_BLUE)
+    ax.tick_params(axis="y", colors=C_BLUE)
+    ax_r = right_axis(ax, C_ORANGE)
+    ax_r.plot(t, res.doppler_rate_hz_s, "-", color=C_ORANGE, lw=1.5)
+    ax_r.set_ylabel("Doppler rate (Hz/s)", color=C_ORANGE)
+    fig4.tight_layout()
+    show_fig(fig4, c_plot4, WIDTH_PANEL, caption=(
+        "Doppler shift and Doppler rate over the same pass at "
+        + caption_values(p, ["f_c_mhz", "h_km"]) + "."))
 
 # --------------------------------------------------------------- Tab 2
 with tab_sweep:
@@ -429,7 +496,7 @@ with tab_sweep:
             for col, k in zip(cols, lora_fields):
                 options = SF_VALUES if k == "sf" else BW_KHZ
                 s[k] = col.selectbox(
-                    PARAM_LABELS[k], options, index=options.index(s[k]),
+                    WIDGET_LABELS[k], options, index=options.index(s[k]),
                     key=f"sc{s['id']}_{k}", label_visibility=vis)
             c_ldro, c_rm = cols[-2:]
             if first:
@@ -482,7 +549,28 @@ with tab_sweep:
     ax.set_ylim(0, 100)
     ax.legend(loc=LEGEND_LOC[sweep_key])
     fig.tight_layout()
-    show_fig(fig, c_plot)
+
+    # Caption as in Figs. 3 to 7. Scenarios are counted as the paper does:
+    # per distinct bandwidth (Fig. 6) or SF (Fig. 7) when LDRO pairs share
+    # a color, per scenario otherwise.
+    def count(n, noun):
+        return f"{n} {noun}{'s' if n != 1 else ''}"
+
+    if sweep_key == "sf":
+        subject = "spreading factor and LDRO settings"
+        scen = count(len({s["b_khz"] for s in ss.scen}), "bandwidth scenario")
+    elif sweep_key == "b_khz":
+        subject = "bandwidth and LDRO settings"
+        scen = count(len({s["sf"] for s in ss.scen}), "spreading factor scenario")
+    else:
+        subject = {"f_c_mhz": "carrier frequency",
+                   "h_km": "satellite orbital altitude",
+                   "p_l": "application payload size"}[sweep_key]
+        scen = count(len(ss.scen), "modulation parameter scenario")
+    at = {"f_c_mhz": ["p_l", "h_km"], "h_km": ["f_c_mhz", "p_l"],
+          "p_l": ["f_c_mhz", "h_km"]}.get(sweep_key, ["f_c_mhz", "h_km", "p_l"])
+    show_fig(fig, c_plot, caption=(
+        f"Impact of {subject} on PDR for {scen} at {caption_values(p, at)}."))
 
 # --------------------------------------------------------------- Tab 3
 with tab_ds:
@@ -557,4 +645,6 @@ with tab_ds:
     ax.legend(handles=legend_handles, loc="center left",
               bbox_to_anchor=(1.02, 0.5))
     fig.tight_layout()
-    show_fig(fig, width=WIDTH_LEGEND)
+    show_fig(fig, width=WIDTH_LEGEND, caption=(
+        "Bi-objective design space of LoRa modulation parameters at "
+        + caption_values(p, ["f_c_mhz", "h_km", "p_l"]) + "."))
