@@ -24,12 +24,14 @@ jobs:
       - uses: actions/checkout@v4
 
       # Publish only the web app and the Python model package, nothing
-      # else from the repository.
+      # else from the repository. webapp/lora_dts is copied over the
+      # package: its SciPy-free modules replace the reference ones.
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp -r webapp/. _site/
           cp -r python/lora_dts _site/lora_dts
+          cp -r webapp/. _site/
+          rm -rf _site/tests
 
       - uses: actions/upload-pages-artifact@v3
         with:

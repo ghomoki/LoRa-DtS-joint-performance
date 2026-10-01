@@ -1,5 +1,6 @@
 """Interactive web front-end for the LoRa Direct-to-Satellite PDR model."""
 
+import asyncio
 import base64
 import io
 
@@ -153,16 +154,21 @@ def right_axis(ax, color):
     return ax_r
 
 
-def show_fig(fig, container=None, width=WIDTH_WIDE, caption=None):
-    """Render fig at a fixed display width, with an optional caption (HTML)
-    beneath it at the same width. Embedded as an <img> rather than
-    st.image, which would downsample it to that width on the server; this
-    way the 200 dpi render stays sharp on high-density screens."""
+def fig_to_svg(fig):
+    """Finish a figure and serialize it as base64 SVG. Vector output stays
+    sharp at any zoom, and is faster to produce and about half the size of
+    the equivalent 200 dpi PNG."""
+    fig.tight_layout()
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=200)
+    fig.savefig(buf, format="svg")
     plt.close(fig)
-    data = base64.b64encode(buf.getvalue()).decode()
-    html = (f'<img src="data:image/png;base64,{data}" '
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+def show_svg(svg, container=None, width=WIDTH_WIDE, caption=None):
+    """Show a base64 SVG at a fixed display width, with an optional caption
+    (HTML) beneath it at the same width."""
+    html = (f'<img src="data:image/svg+xml;base64,{svg}" '
             f'style="width:{width}px; max-width:100%">')
     if caption:
         html += (f'<div style="max-width:{width}px; font-size:0.875rem; '
@@ -330,12 +336,212 @@ def reset_button(tab, on_reset=None):
               help="Revert to the paper's baseline scenario")
 
 
-tab_single, tab_sweep, tab_ds = st.tabs(
-    ["Single-pass analysis", "Parameter sweep", "Design space exploration"]
-)
+# Whole-tab results, cached as a unit so that rerunning a tab whose inputs
+# did not change costs one lookup rather than one per model pass.
+@st.cache_data(max_entries=64, show_spinner=False)
+def sweep_curves(p, sweep_key, sweep_vals, scenarios):
+    """PDR (%) along the sweep for each (sf, b_khz, ldro) scenario."""
+    curves = []
+    for sf, b_khz, ldro in scenarios:
+        sp = {"sf": sf, "b_khz": b_khz, "ldro": ldro}
+        sp.pop(sweep_key, None)
+        curves.append(tuple(run_pass(**p, **sp, **{sweep_key: v}).pdr * 100
+                            for v in sweep_vals))
+    return curves
 
-# --------------------------------------------------------------- Tab 1
-with tab_single:
+
+@st.cache_data(max_entries=64, show_spinner=False)
+def design_space_results(p):
+    """PDR (%), bit rate, viability and Pareto optimality of every
+    (SF, B, LDRO) configuration, as in pareto_front.m. LDRO is mandatory
+    when the symbol time reaches 16.38 ms; elsewhere both LDRO choices are
+    separate design points."""
+    configs = []
+    for sf in SF_VALUES:
+        for b in DS_BW_KHZ:
+            ldro_choices = [True] if 2**sf / b >= 16.38 else [False, True]
+            configs.extend((sf, b, ldro) for ldro in ldro_choices)
+
+    pdr_pct = np.array([run_pass(**p, sf=sf, b_khz=b, ldro=ldro).pdr * 100
+                        for sf, b, ldro in configs])
+    rate = np.array([bit_rate_bps(sf, b, ldro) for sf, b, ldro in configs])
+
+    # Pareto-optimal: no other point has both higher PDR and higher rate.
+    # Points below a 1% PDR floor are not real design choices.
+    viable = pdr_pct > 1.0
+    is_pareto = np.array([
+        not np.any((pdr_pct >= pdr_pct[i]) & (rate >= rate[i])
+                   & ((pdr_pct > pdr_pct[i]) | (rate > rate[i])))
+        for i in range(len(configs))
+    ]) & viable
+    return tuple(configs), pdr_pct, rate, viable, is_pareto
+
+
+# Figures. Each is drawn by a cached function of exactly the data it plots,
+# so a parameter change only redraws the figures it actually affects (e.g.
+# a payload change redraws Fig. 2 but not the link margin, geometry or
+# Doppler panels).
+@st.cache_data(max_entries=64, show_spinner=False)
+def svg_reception(t, p_link, p_success, l_static, l_dynamic):
+    """Reception probability (scripts/pdr_three_failure_modes.m). The
+    Doppler markers are only drawn, and only appear in the legend, when
+    that failure mode actually fires, as in the MATLAB script. No xlim in
+    the scripts: MATLAB rounds the limits out to the ticks."""
+    fig, ax = new_axes(FIGSIZE_PANEL)
+    # Upright symbols, as MATLAB's TeX interpreter renders P_{link}
+    ax.plot(t, p_link, "-", color=C_PLINK, lw=1.3,
+            label=r"$\mathrm{P_{link}}$")
+    ax.plot(t, p_success, "-", color=C_PSUCCESS, lw=2.3,
+            label=r"$\mathrm{P_{success}}$")
+    if l_static.any():
+        ax.plot(t[l_static], np.zeros(l_static.sum()), ".",
+                color=C_BLUE, ms=6, ls="none",
+                label=r"$\mathrm{L_{static}}$ = true")
+    if l_dynamic.any():
+        ax.plot(t[l_dynamic], np.zeros(l_dynamic.sum()), ".",
+                color=C_ORANGE, ms=6, ls="none",
+                label=r"$\mathrm{L_{dynamic}}$ = true")
+    ax.set_xlabel("Time (s)\nZenith = 0")
+    ax.set_ylabel("Packet reception probability")
+    ax.set_ylim(-0.05, 1.05)
+    ax.legend(loc="upper right")
+    return fig_to_svg(fig)
+
+
+@st.cache_data(max_entries=64, show_spinner=False)
+def svg_link_margin(t, margin_db):
+    """Link margin, with the dashed sensitivity line at 0 dB."""
+    fig, ax = new_axes(FIGSIZE_PANEL)
+    ax.plot(t, margin_db, "-", color=C_BLUE, lw=1.5)
+    ax.axhline(0, ls="--", color=C_GRAY, lw=1.0)
+    # yline's default label placement: right end, above the line
+    ax.text(1, 0, "sensitivity ", color=C_GRAY, fontsize=9, ha="right",
+            va="bottom", transform=ax.get_yaxis_transform())
+    ax.set_xlabel("Time (s)\nZenith = 0")
+    ax.set_ylabel("Link margin (dB)")
+    return fig_to_svg(fig)
+
+
+@st.cache_data(max_entries=64, show_spinner=False)
+def svg_geometry(t, elevation_deg):
+    """Pass geometry: elevation with the Rician K factor it drives."""
+    fig, ax = new_axes(FIGSIZE_PANEL)
+    ax.plot(t, elevation_deg, "-", color=C_BLUE, lw=1.5)
+    ax.set_xlabel("Time (s)\nZenith = 0")
+    ax.set_ylabel("Elevation (deg)", color=C_BLUE)
+    ax.tick_params(axis="y", colors=C_BLUE)
+    ax.set_ylim(0, 90)
+    ax_k = right_axis(ax, C_ORANGE)
+    ax_k.plot(t, rician_k(elevation_deg), "-", color=C_ORANGE, lw=1.5)
+    ax_k.set_ylabel("Rician K factor", color=C_ORANGE)
+    return fig_to_svg(fig)
+
+
+@st.cache_data(max_entries=64, show_spinner=False)
+def svg_doppler(t, shift_hz, rate_hz_s):
+    """Doppler shift and its rate, which drive the static and dynamic
+    Doppler failures."""
+    fig, ax = new_axes(FIGSIZE_PANEL)
+    ax.plot(t, shift_hz / 1e3, "-", color=C_BLUE, lw=1.5)
+    ax.set_xlabel("Time (s)\nZenith = 0")
+    ax.set_ylabel("Doppler shift (kHz)", color=C_BLUE)
+    ax.tick_params(axis="y", colors=C_BLUE)
+    ax_r = right_axis(ax, C_ORANGE)
+    ax_r.plot(t, rate_hz_s, "-", color=C_ORANGE, lw=1.5)
+    ax_r.set_ylabel("Doppler rate (Hz/s)", color=C_ORANGE)
+    return fig_to_svg(fig)
+
+
+@st.cache_data(max_entries=64, show_spinner=False)
+def svg_sweep(sweep_key, sweep_vals, lines):
+    """PDR vs the swept parameter, one line per (pdr, label, color,
+    linestyle) entry of lines."""
+    fig, ax = new_axes()
+    for pdr, label, color, ls in lines:
+        ax.plot(sweep_vals, pdr, ls, marker="o", color=color, mfc=color,
+                lw=1.6, ms=5, label=label)
+    if sweep_key == "b_khz":
+        ax.set_xscale("log")
+        # Ticks on the bandwidth values themselves, as in sweep_pdr_vs_bw.m
+        ax.set_xticks(sweep_vals, [f"{b:g}" for b in sweep_vals])
+        ax.minorticks_off()
+    elif sweep_key == "sf":
+        ax.set_xticks(sweep_vals)
+    ax.set_xlabel(AXIS_LABELS[sweep_key])
+    ax.set_ylabel("PDR (%)")
+    ax.set_xlim(min(sweep_vals), max(sweep_vals))
+    ax.set_ylim(0, 100)
+    ax.legend(loc=LEGEND_LOC[sweep_key])
+    return fig_to_svg(fig)
+
+
+@st.cache_data(max_entries=64, show_spinner=False)
+def svg_design_space(configs, pdr_pct, rate, viable, is_pareto):
+    """PDR vs bit rate Pareto front (scripts/pareto_front.m). Points are
+    grouped into one scatter call per bandwidth marker and Pareto status."""
+    sf_colors = plt.cm.turbo(np.linspace(0, 1, len(SF_VALUES)))
+    bw_markers = ["o", "s", "^", "d", "v"]
+
+    fig, ax = new_axes(FIGSIZE_DS)
+    for b, marker in zip(DS_BW_KHZ, bw_markers):
+        for pareto in (False, True):
+            idx = [i for i, (_, bi, _) in enumerate(configs)
+                   if bi == b and viable[i] and is_pareto[i] == pareto]
+            if not idx:
+                continue
+            edge = [sf_colors[SF_VALUES.index(configs[i][0])] for i in idx]
+            face = [e if configs[i][2] else "w" for i, e in zip(idx, edge)]
+            if pareto:
+                ax.scatter(rate[idx], pdr_pct[idx], s=64, marker=marker,
+                           zorder=3, edgecolors=edge, facecolors=face,
+                           linewidths=1.8)
+            else:
+                ax.scatter(rate[idx], pdr_pct[idx], s=16, marker=marker,
+                           zorder=2, edgecolors=edge, facecolors=face,
+                           linewidths=0.6, alpha=0.55)
+
+    ax.set_xscale("log")
+    # MATLAB draws dotted minor grid lines between the decades of this log
+    # axis (MinorGridLineStyle ':', MinorGridAlpha 0.25)
+    ax.grid(True, which="minor", axis="x", linestyle=":", alpha=0.25)
+    ax.set_xlim(90, 2e4)
+    ax.set_ylim(0, 100)
+    ax.set_xlabel("Bit rate (bps)")
+    ax.set_ylabel("PDR (%)")
+
+    legend_handles = [
+        Line2D([], [], ls="", marker="s", ms=8, color=sf_colors[s],
+               label=f"SF{sf}")
+        for s, sf in enumerate(SF_VALUES)
+    ] + [
+        Line2D([], [], ls="", marker=m, ms=8, color="k",
+               label=f"B={b:g} kHz")
+        for m, b in zip(bw_markers, DS_BW_KHZ)
+    ] + [
+        Line2D([], [], ls="", marker="o", ms=8, mfc="k", mec="k",
+               label="LDRO on"),
+        Line2D([], [], ls="", marker="o", ms=8, mfc="w", mec="k",
+               label="LDRO off"),
+    ]
+    ax.legend(handles=legend_handles, loc="center left",
+              bbox_to_anchor=(1.02, 0.5))
+    return fig_to_svg(fig)
+
+
+# Responsiveness. stlite runs this script on the browser's single thread,
+# so a widget change that arrives mid-run cannot interrupt it the way it
+# would on a Streamlit server: every click would queue a full rerun, and
+# rapid clicking froze the app. The tabs therefore await briefly before
+# each costly step. That hands control back to the browser, a newer click
+# gets processed, and Streamlit abandons the stale run at its next element.
+# (This is also why the tabs are async functions, not st.fragment, which
+# does not support them.) Whole tabs whose inputs did not change come from
+# the caches above, so rerunning them is cheap.
+async def yield_to_browser():
+    await asyncio.sleep(0)
+
+
+async def single_pass_tab():
     reset_button("single")
     p = param_inputs(tab_key("single"))
     res = run_pass(**p)
@@ -351,90 +557,44 @@ with tab_single:
     c_plot1, c_plot2 = st.columns(2)
     c_plot3, c_plot4 = st.columns(2)
 
-    # Panel 1: reception probability (scripts/pdr_three_failure_modes.m).
-    # The Doppler markers are only drawn — and only appear in the legend —
-    # when that failure mode actually fires, as in the MATLAB script.
-    # No xlim in the scripts: MATLAB rounds the limits out to the ticks.
-    fig1, ax = new_axes(FIGSIZE_PANEL)
-    # Upright symbols, as MATLAB's TeX interpreter renders P_{link}
-    ax.plot(t, res.p_link, "-", color=C_PLINK, lw=1.3,
-            label=r"$\mathrm{P_{link}}$")
-    ax.plot(t, p_success, "-", color=C_PSUCCESS, lw=2.3,
-            label=r"$\mathrm{P_{success}}$")
-    if res.l_static.any():
-        ax.plot(t[res.l_static], np.zeros(res.l_static.sum()), ".",
-                color=C_BLUE, ms=6, ls="none",
-                label=r"$\mathrm{L_{static}}$ = true")
-    if res.l_dynamic.any():
-        ax.plot(t[res.l_dynamic], np.zeros(res.l_dynamic.sum()), ".",
-                color=C_ORANGE, ms=6, ls="none",
-                label=r"$\mathrm{L_{dynamic}}$ = true")
-    ax.set_xlabel("Time (s)\nZenith = 0")
-    ax.set_ylabel("Packet reception probability")
-    ax.set_ylim(-0.05, 1.05)
-    ax.legend(loc="upper right")
-    fig1.tight_layout()
-    show_fig(fig1, c_plot1, WIDTH_PANEL, caption=(
-        "Packet reception probability and failure modes for a full "
-        "satellite pass at "
-        + caption_values(p, ["f_c_mhz", "h_km", "p_l", "sf", "b_khz"],
-                         extra=[f"LDRO = {'on' if p['ldro'] else 'off'}"])
-        + "."))
-
-    # Panel 2: link margin, with the dashed sensitivity line at 0 dB
-    fig2, ax = new_axes(FIGSIZE_PANEL)
-    ax.plot(t, res.link_margin_db, "-", color=C_BLUE, lw=1.5)
-    ax.axhline(0, ls="--", color=C_GRAY, lw=1.0)
-    # yline's default label placement: right end, above the line
-    ax.text(1, 0, "sensitivity ", color=C_GRAY, fontsize=9, ha="right",
-            va="bottom", transform=ax.get_yaxis_transform())
-    ax.set_xlabel("Time (s)\nZenith = 0")
-    ax.set_ylabel("Link margin (dB)")
-    fig2.tight_layout()
+    await yield_to_browser()
+    show_svg(svg_reception(t, res.p_link, p_success, res.l_static,
+                           res.l_dynamic),
+             c_plot1, WIDTH_PANEL, caption=(
+                 "Packet reception probability and failure modes for a full "
+                 "satellite pass at "
+                 + caption_values(
+                     p, ["f_c_mhz", "h_km", "p_l", "sf", "b_khz"],
+                     extra=[f"LDRO = {'on' if p['ldro'] else 'off'}"])
+                 + "."))
     # Not paper figures: short captions in the same style. The link budget
     # values are stated here, as the Fig. 2 caption (like the paper's) omits them.
-    show_fig(fig2, c_plot2, WIDTH_PANEL, caption=(
-        "Link margin above receiver sensitivity for the same pass, with "
-        + caption_values(p, ["p_tx_dbm", "g_t", "g_r"]) + "."))
+    await yield_to_browser()
+    show_svg(svg_link_margin(t, res.link_margin_db),
+             c_plot2, WIDTH_PANEL, caption=(
+                 "Link margin above receiver sensitivity for the same pass, "
+                 "with " + caption_values(p, ["p_tx_dbm", "g_t", "g_r"]) + "."))
+    await yield_to_browser()
+    show_svg(svg_geometry(t, res.elevation_deg),
+             c_plot3, WIDTH_PANEL, caption=(
+                 "Satellite elevation angle and the resulting Rician <i>K</i> "
+                 "factor over the same pass at "
+                 + caption_values(p, ["h_km"]) + "."))
+    await yield_to_browser()
+    show_svg(svg_doppler(t, res.doppler_shift_hz, res.doppler_rate_hz_s),
+             c_plot4, WIDTH_PANEL, caption=(
+                 "Doppler shift and Doppler rate over the same pass at "
+                 + caption_values(p, ["f_c_mhz", "h_km"]) + "."))
 
-    # Panel 3: pass geometry — elevation with the Rician K factor it drives
-    fig3, ax = new_axes(FIGSIZE_PANEL)
-    ax.plot(t, res.elevation_deg, "-", color=C_BLUE, lw=1.5)
-    ax.set_xlabel("Time (s)\nZenith = 0")
-    ax.set_ylabel("Elevation (deg)", color=C_BLUE)
-    ax.tick_params(axis="y", colors=C_BLUE)
-    ax.set_ylim(0, 90)
-    ax_k = right_axis(ax, C_ORANGE)
-    ax_k.plot(t, rician_k(res.elevation_deg), "-", color=C_ORANGE, lw=1.5)
-    ax_k.set_ylabel("Rician K factor", color=C_ORANGE)
-    fig3.tight_layout()
-    show_fig(fig3, c_plot3, WIDTH_PANEL, caption=(
-        "Satellite elevation angle and the resulting Rician <i>K</i> factor "
-        "over the same pass at " + caption_values(p, ["h_km"]) + "."))
 
-    # Panel 4: Doppler shift and its rate, which drive the static and
-    # dynamic Doppler failures
-    fig4, ax = new_axes(FIGSIZE_PANEL)
-    ax.plot(t, res.doppler_shift_hz / 1e3, "-", color=C_BLUE, lw=1.5)
-    ax.set_xlabel("Time (s)\nZenith = 0")
-    ax.set_ylabel("Doppler shift (kHz)", color=C_BLUE)
-    ax.tick_params(axis="y", colors=C_BLUE)
-    ax_r = right_axis(ax, C_ORANGE)
-    ax_r.plot(t, res.doppler_rate_hz_s, "-", color=C_ORANGE, lw=1.5)
-    ax_r.set_ylabel("Doppler rate (Hz/s)", color=C_ORANGE)
-    fig4.tight_layout()
-    show_fig(fig4, c_plot4, WIDTH_PANEL, caption=(
-        "Doppler shift and Doppler rate over the same pass at "
-        + caption_values(p, ["f_c_mhz", "h_km"]) + "."))
-
-# --------------------------------------------------------------- Tab 2
-with tab_sweep:
+async def sweep_tab():
     N_SWEEP = 15
 
     # Reset keeps the chosen sweep parameter, but restores the sweep range,
     # the shared inputs and the scenario list, which is rebuilt from the
     # figure's defaults once "scen_for" is gone
-    reset_button("sweep", on_reset=lambda: st.session_state.pop("scen_for", None))
+    reset_button("sweep",
+                 on_reset=lambda: st.session_state.pop("scen_for", None))
     tk = tab_key("sweep")
     c_sel, c_min, c_max = st.columns([2, 1, 1])
     sweep_key = c_sel.selectbox(
@@ -512,12 +672,11 @@ with tab_sweep:
                             on_click=remove_scenario, args=(s["id"],))
         st.button("+", help="Add scenario", on_click=add_scenario)
 
-    curves = []
+    await yield_to_browser()
     with st.spinner("Sweeping..."):
-        for s in ss.scen:
-            sp = {k: s[k] for k in ("sf", "b_khz", "ldro") if k != sweep_key}
-            curves.append([run_pass(**p, **sp, **{sweep_key: v}).pdr * 100
-                           for v in sweep_vals])
+        curves = sweep_curves(
+            p, sweep_key, tuple(sweep_vals),
+            tuple((s["sf"], s["b_khz"], s["ldro"]) for s in ss.scen))
 
     # Styled as in sweep_pdr_vs_*.m: one color per (SF, B) combination, and
     # a dashed line for LDRO on when the same combination also appears with
@@ -526,7 +685,7 @@ with tab_sweep:
         return tuple(s[k] for k in lora_fields)
 
     groups = list(dict.fromkeys(lora_key(s) for s in ss.scen))
-    fig, ax = new_axes()
+    lines = []
     for s, pdr in zip(ss.scen, curves):
         color = SWEEP_PALETTE[groups.index(lora_key(s)) % len(SWEEP_PALETTE)]
         has_off_twin = s["ldro"] and any(
@@ -534,21 +693,8 @@ with tab_sweep:
         label = [f"SF={s['sf']}"] if "sf" in lora_fields else []
         label += [f"B={s['b_khz']:g} kHz"] if "b_khz" in lora_fields else []
         label += ["LDRO on" if s["ldro"] else "LDRO off"]
-        ax.plot(sweep_vals, pdr, "--" if has_off_twin else "-", marker="o",
-                color=color, mfc=color, lw=1.6, ms=5, label=", ".join(label))
-    if sweep_key == "b_khz":
-        ax.set_xscale("log")
-        # Ticks on the bandwidth values themselves, as in sweep_pdr_vs_bw.m
-        ax.set_xticks(sweep_vals, [f"{b:g}" for b in sweep_vals])
-        ax.minorticks_off()
-    elif sweep_key == "sf":
-        ax.set_xticks(sweep_vals)
-    ax.set_xlabel(AXIS_LABELS[sweep_key])
-    ax.set_ylabel("PDR (%)")
-    ax.set_xlim(min(sweep_vals), max(sweep_vals))
-    ax.set_ylim(0, 100)
-    ax.legend(loc=LEGEND_LOC[sweep_key])
-    fig.tight_layout()
+        lines.append((tuple(pdr), ", ".join(label), color,
+                      "--" if has_off_twin else "-"))
 
     # Caption as in Figs. 3 to 7. Scenarios are counted as the paper does:
     # per distinct bandwidth (Fig. 6) or SF (Fig. 7) when LDRO pairs share
@@ -561,7 +707,8 @@ with tab_sweep:
         scen = count(len({s["b_khz"] for s in ss.scen}), "bandwidth scenario")
     elif sweep_key == "b_khz":
         subject = "bandwidth and LDRO settings"
-        scen = count(len({s["sf"] for s in ss.scen}), "spreading factor scenario")
+        scen = count(len({s["sf"] for s in ss.scen}),
+                     "spreading factor scenario")
     else:
         subject = {"f_c_mhz": "carrier frequency",
                    "h_km": "satellite orbital altitude",
@@ -569,82 +716,39 @@ with tab_sweep:
         scen = count(len(ss.scen), "modulation parameter scenario")
     at = {"f_c_mhz": ["p_l", "h_km"], "h_km": ["f_c_mhz", "p_l"],
           "p_l": ["f_c_mhz", "h_km"]}.get(sweep_key, ["f_c_mhz", "h_km", "p_l"])
-    show_fig(fig, c_plot, caption=(
-        f"Impact of {subject} on PDR for {scen} at {caption_values(p, at)}."))
+    await yield_to_browser()
+    show_svg(svg_sweep(sweep_key, tuple(sweep_vals), tuple(lines)),
+             c_plot, caption=(
+                 f"Impact of {subject} on PDR for {scen} at "
+                 f"{caption_values(p, at)}."))
 
-# --------------------------------------------------------------- Tab 3
-with tab_ds:
+
+async def design_space_tab():
     reset_button("ds")
     p = param_inputs(tab_key("ds"), lora=False)
 
-    # LDRO is mandatory when the symbol time reaches 16.38 ms; elsewhere
-    # both LDRO choices are separate design points (as in pareto_front.m).
-    configs = []
-    for sf in SF_VALUES:
-        for b in DS_BW_KHZ:
-            ldro_choices = [True] if 2**sf / b >= 16.38 else [False, True]
-            configs.extend((sf, b, ldro) for ldro in ldro_choices)
+    await yield_to_browser()
+    with st.spinner("Computing the design space..."):
+        configs, pdr_pct, rate, viable, is_pareto = design_space_results(p)
 
-    pdr_pct = np.empty(len(configs))
-    rate = np.empty(len(configs))
-    with st.spinner(f"Computing {len(configs)} configurations..."):
-        for i, (sf, b, ldro) in enumerate(configs):
-            pdr_pct[i] = run_pass(**p, sf=sf, b_khz=b, ldro=ldro).pdr * 100
-            rate[i] = bit_rate_bps(sf, b, ldro)
+    await yield_to_browser()
+    show_svg(svg_design_space(configs, pdr_pct, rate, viable, is_pareto),
+             width=WIDTH_LEGEND, caption=(
+                 "Bi-objective design space of LoRa modulation parameters at "
+                 + caption_values(p, ["f_c_mhz", "h_km", "p_l"]) + "."))
 
-    # Pareto-optimal: no other point has both higher PDR and higher rate.
-    # Points below a 1% PDR floor are not real design choices.
-    viable = pdr_pct > 1.0
-    is_pareto = np.array([
-        not np.any((pdr_pct >= pdr_pct[i]) & (rate >= rate[i])
-                   & ((pdr_pct > pdr_pct[i]) | (rate > rate[i])))
-        for i in range(len(configs))
-    ]) & viable
 
-    sf_colors = plt.cm.turbo(np.linspace(0, 1, len(SF_VALUES)))
-    bw_markers = ["o", "s", "^", "d", "v"]
+# Debounce: during a burst of clicks each new one supersedes this run here,
+# before any work is done, so only the final setting gets computed and drawn.
+# (stlite allows await at the top level of the script.)
+await asyncio.sleep(0.1)
 
-    fig, ax = new_axes(FIGSIZE_DS)
-    for i, (sf, b, ldro) in enumerate(configs):
-        if not viable[i]:
-            continue
-        color = sf_colors[SF_VALUES.index(sf)]
-        marker = bw_markers[DS_BW_KHZ.index(b)]
-        face = color if ldro else "w"
-        if is_pareto[i]:
-            ax.scatter(rate[i], pdr_pct[i], s=64, marker=marker, zorder=3,
-                       edgecolors=[color], facecolors=[face], linewidths=1.8)
-        else:
-            ax.scatter(rate[i], pdr_pct[i], s=16, marker=marker, zorder=2,
-                       edgecolors=[color], facecolors=[face], linewidths=0.6,
-                       alpha=0.55)
-
-    ax.set_xscale("log")
-    # MATLAB draws dotted minor grid lines between the decades of this log
-    # axis (MinorGridLineStyle ':', MinorGridAlpha 0.25)
-    ax.grid(True, which="minor", axis="x", linestyle=":", alpha=0.25)
-    ax.set_xlim(90, 2e4)
-    ax.set_ylim(0, 100)
-    ax.set_xlabel("Bit rate (bps)")
-    ax.set_ylabel("PDR (%)")
-
-    legend_handles = [
-        Line2D([], [], ls="", marker="s", ms=8, color=sf_colors[s],
-               label=f"SF{sf}")
-        for s, sf in enumerate(SF_VALUES)
-    ] + [
-        Line2D([], [], ls="", marker=m, ms=8, color="k",
-               label=f"B={b:g} kHz")
-        for m, b in zip(bw_markers, DS_BW_KHZ)
-    ] + [
-        Line2D([], [], ls="", marker="o", ms=8, mfc="k", mec="k",
-               label="LDRO on"),
-        Line2D([], [], ls="", marker="o", ms=8, mfc="w", mec="k",
-               label="LDRO off"),
-    ]
-    ax.legend(handles=legend_handles, loc="center left",
-              bbox_to_anchor=(1.02, 0.5))
-    fig.tight_layout()
-    show_fig(fig, width=WIDTH_LEGEND, caption=(
-        "Bi-objective design space of LoRa modulation parameters at "
-        + caption_values(p, ["f_c_mhz", "h_km", "p_l"]) + "."))
+tab_single, tab_sweep, tab_ds = st.tabs(
+    ["Single-pass analysis", "Parameter sweep", "Design space exploration"]
+)
+with tab_single:
+    await single_pass_tab()
+with tab_sweep:
+    await sweep_tab()
+with tab_ds:
+    await design_space_tab()
