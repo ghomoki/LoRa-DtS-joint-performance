@@ -65,7 +65,7 @@ DEFAULT_SCENARIOS = {
     ],
 }
 
-# Line colors of the MATLAB figures in scripts/, for figure parity with
+# Line colors of the MATLAB figures in matlab/scripts/paper/, for figure parity with
 # the paper. C_BLUE / C_ORANGE / C_GREEN are the sweep-script palette.
 C_BLUE = "#0072BD"      # [0.00 0.45 0.74]
 C_ORANGE = "#D95319"    # [0.85 0.33 0.10]
@@ -219,7 +219,7 @@ WIDGET_LABELS = {
     "g_r": r"$G_\mathrm{Rx}$, Rx antenna gain (dBi)",
 }
 
-# Axis labels and legend placement of the matching scripts/sweep_pdr_vs_*.m
+# Axis labels and legend placement of the matching matlab/scripts/paper/sweep_pdr_vs_*.m
 AXIS_LABELS = {
     "f_c_mhz": "Carrier frequency (MHz)",
     "h_km": "Orbital altitude (km)",
@@ -383,7 +383,7 @@ def design_space_results(p):
 # Doppler panels).
 @st.cache_data(max_entries=64, show_spinner=False)
 def svg_reception(t, p_link, p_success, l_static, l_dynamic):
-    """Reception probability (scripts/pdr_three_failure_modes.m). The
+    """Reception probability (matlab/scripts/paper/pdr_three_failure_modes.m). The
     Doppler markers are only drawn, and only appear in the legend, when
     that failure mode actually fires, as in the MATLAB script. No xlim in
     the scripts: MATLAB rounds the limits out to the ticks."""
@@ -477,7 +477,7 @@ def svg_sweep(sweep_key, sweep_vals, lines):
 
 @st.cache_data(max_entries=64, show_spinner=False)
 def svg_design_space(configs, pdr_pct, rate, viable, is_pareto):
-    """PDR vs bit rate Pareto front (scripts/pareto_front.m). Points are
+    """PDR vs bit rate Pareto front (matlab/scripts/paper/pareto_front.m). Points are
     grouped into one scatter call per bandwidth marker and Pareto status."""
     sf_colors = plt.cm.turbo(np.linspace(0, 1, len(SF_VALUES)))
     bw_markers = ["o", "s", "^", "d", "v"]
@@ -752,3 +752,11 @@ with tab_sweep:
     await sweep_tab()
 with tab_ds:
     await design_space_tab()
+
+st.divider()
+st.caption(
+    "G. Homoki and H. Bang, *Trading Range for Throughput: Joint Channel "
+    "Modeling and Design Space Exploration for LoRa Direct-to-Satellite "
+    "Links*, APISAT 2026. · "
+    "[Source code](https://github.com/ghomoki/LoRa-DtS-joint-performance) "
+    "(MIT license)")

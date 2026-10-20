@@ -6,7 +6,7 @@
 %   LDRO toggling changes the inflection.
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 % Baseline
 F_C_base  = 915;
@@ -37,7 +37,7 @@ for c = 1:numel(cases)
     for k = 1:length(SF_values)
         SF = SF_values(k);
         rng(0);
-        PDR(k, c) = packetdeliveryratio( ...
+        PDR(k, c) = packet_delivery_ratio( ...
             E, cases(c).B, F_C_base, cases(c).LDRO, SF, P_L_base, H_base);
     end
     fprintf('  [%d/%d] %s done\n', c, numel(cases), cases(c).label);

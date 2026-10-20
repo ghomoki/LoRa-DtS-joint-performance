@@ -1,11 +1,11 @@
-%RICIAN_K_PASS  Visualize Rician K factor across the full elevation range.
+%RICIAN_K_PLOT  Visualize Rician K factor across the full elevation range.
 %   Plots the Rician fading K factor vs. elevation sweeping from horizon (0°) to zenith (90°).
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 E = (0 : 0.1 : 90).';
-K = rician_K(E);
+K = rician_k(E);
 
 figure;
 hold on;

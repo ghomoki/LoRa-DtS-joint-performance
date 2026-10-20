@@ -4,7 +4,7 @@
 %   to outweigh the low-altitude Doppler penalty.
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 % Baseline (matches pdr_three_failure_modes.m)
 F_C_base = 915;
@@ -34,7 +34,7 @@ tic;
 for c = 1:numel(cases)
     for k = 1:length(H_values)
         rng(0);
-        PDR(k, c) = packetdeliveryratio( ...
+        PDR(k, c) = packet_delivery_ratio( ...
             E, cases(c).B, F_C_base, cases(c).LDRO, cases(c).SF, P_L_base, H_values(k));
     end
     fprintf('  [%d/%d] %s done\n', c, numel(cases), cases(c).label);

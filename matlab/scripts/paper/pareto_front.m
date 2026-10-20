@@ -3,12 +3,12 @@
 %   (PDR, bit rate) space. Pareto-optimal points are highlighted; dominated
 %   points are faded for context.
 %
-%   Coding rate is fixed at 4/5 throughout (see MODEL_NOTES on why).
+%   Coding rate is fixed at 4/5 throughout (see NOTES.md on why).
 %   LDRO is the only third-axis knob: mandatory in cells where the
 %   LoRaWAN symbol-time recommendation applies, optional elsewhere.
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 % Labels: useful for paper supplementary; turn off for the small abstract
 % figure where the Pareto markers are close enough that text overlaps.
@@ -19,7 +19,7 @@ E    = 1;
 F_C  = 915;
 H    = 1000;
 P_L  = 100;
-CR   = 1;   % Coding rate index (4/5); fixed throughout, see MODEL_NOTES
+CR   = 1;   % Coding rate index (4/5); fixed throughout, see NOTES.md
 
 SF_values = 7:12;
 B_values  = [31.25, 62.5, 125, 250, 500];
@@ -55,7 +55,7 @@ for s = 1:n_SF
 
         for LDRO = LDRO_choices
             rng(0);
-            [pdr, ~, ~, ~, ~] = packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H);
+            [pdr, ~, ~, ~, ~] = packet_delivery_ratio(E, B, F_C, LDRO, SF, P_L, H);
 
             % LoRa bit rate: (SF - 2*LDRO) effective bits per symbol,
             % B chips/s per symbol, 2^SF chips per symbol, factor 4/(4+CR)

@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+title: "LoRa DtS Joint Performance Analysis Tool"
+type: software
+license: MIT
+repository-code: "https://github.com/ghomoki/LoRa-DtS-joint-performance"
+url: "https://ghomoki.github.io/LoRa-DtS-joint-performance/"
+authors:
+  - family-names: Homoki
+    given-names: Gergely
+    affiliation: "Korea Advanced Institute of Science and Technology (KAIST)"
+preferred-citation:
+  type: conference-paper
+  title: "Trading Range for Throughput: Joint Channel Modeling and Design Space Exploration for LoRa Direct-to-Satellite Links"
+  authors:
+    - family-names: Homoki
+      given-names: Gergely
+      affiliation: "Department of Aerospace Engineering, Korea Advanced Institute of Science and Technology (KAIST)"
+    - family-names: Bang
+      given-names: Hyochoong
+      affiliation: "Department of Aerospace Engineering, Korea Advanced Institute of Science and Technology (KAIST)"
+  collection-title: "The 17th Asia-Pacific International Symposium on Aerospace Technology (APISAT 2026)"
+  year: 2026

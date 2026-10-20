@@ -1,4 +1,4 @@
-"""Elevation-dependent Rician K-factor, port of rician_K.m."""
+"""Elevation-dependent Rician K-factor, port of rician_k.m."""
 
 import numpy as np
 from scipy.interpolate import CubicSpline

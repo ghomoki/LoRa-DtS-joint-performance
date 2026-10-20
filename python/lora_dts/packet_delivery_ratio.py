@@ -1,4 +1,4 @@
-"""LoRa Direct-to-Satellite PDR model, port of packetdeliveryratio.m."""
+"""LoRa Direct-to-Satellite PDR model, port of packet_delivery_ratio.m."""
 
 from dataclasses import dataclass
 

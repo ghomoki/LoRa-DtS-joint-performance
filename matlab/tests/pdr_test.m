@@ -22,13 +22,13 @@ classdef pdr_test < matlab.unittest.TestCase
 
     methods (Test)
         function comfortableLink(testCase)
-            [pdr, ~, ~, ~, ~] = packetdeliveryratio( ...
+            [pdr, ~, ~, ~, ~] = packet_delivery_ratio( ...
                 10, 31.25, 436.7, true, 10, 55, 560);
             testCase.verifyEqual(pdr, 0.030871060259, "AbsTol", 1e-9);
         end
 
         function stressedLink(testCase)
-            [pdr, ~, ~, ~, ~] = packetdeliveryratio( ...
+            [pdr, ~, ~, ~, ~] = packet_delivery_ratio( ...
                 1, 125, 915, false, 10, 55, 1500);
             testCase.verifyEqual(pdr, 0.057956850261, "AbsTol", 1e-9);
         end

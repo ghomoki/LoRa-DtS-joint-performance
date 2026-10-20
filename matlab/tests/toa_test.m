@@ -3,7 +3,7 @@ classdef toa_test < matlab.unittest.TestCase
 %
 %   These scenarios are the ToA values printed in the captions of Figs. 4,
 %   5, and 7 of Asad Ullah et al. (2024). They are reproduced by the paper's
-%   own LoRa_ToA.m (see LoRa_ToA_paper.m in this repo), which sets:
+%   own published LoRa_ToA.m (not included in this repository), which sets:
 %
 %       n_preamble  = 8
 %       Coding Rate = 4/5 (CR=1)

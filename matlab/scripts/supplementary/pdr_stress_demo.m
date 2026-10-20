@@ -5,7 +5,7 @@
 %   the channel is marginal.
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 E    = 1;        % Minimum elevation angle  (deg) — full pass
 B    = 250;      % Bandwidth                (kHz)
@@ -21,7 +21,7 @@ fprintf('(This is slower than pdr_demo due to N_MC=1e5 samples per packet.)\n\n'
 
 tic;
 [pdr, L_static, L_dynamic, L_joint, results] = ...
-    packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H);
+    packet_delivery_ratio(E, B, F_C, LDRO, SF, P_L, H);
 elapsed = toc;
 
 fprintf('PDR = %.4f over %d packets in the pass (%.1f s elapsed).\n', ...

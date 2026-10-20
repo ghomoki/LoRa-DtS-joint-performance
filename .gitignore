@@ -1,36 +1,19 @@
-packetdeliveryratio.asv
+# Local material that must not be published: third-party papers and code,
+# paper drafts, exported figures, and private diagnostic scripts
+literature/
+references_code/
+figures/
+*.pdf
+matlab/scripts/**/*_diag.m
+
+# MATLAB
 *.asv
-Understanding_the_Limits_of_LoRa_Direct-to-Satellite_The_Doppler_Perspectives.pdf
-DS_SX1276-7-8-9_W_APP_V7.pdf
-Bandwidth_LoRa_Dopper_effect.m
-LoRa_ToA_paper.m
-figure10_diag.m
-figure8_diag.m
-literature/Enabling_mMTC_in_Remote_Areas_LoRaWAN_and_LEO_Satellite_Integration_for_Offshore_Wind_Farm_Monitoring.pdf
-literature/Performance_analysis_of_low-Earth-orbit_LEO_mobile-Satellite_system_using_moment-based_approximation_of_degradation_factors.pdf
-references_code/Probability_SNR.m
-figures/altitude.png
-figures/altitudesmall.png
-figures/bandwidth.png
-figures/bwsmall.png
-figures/frequency.png
-figures/frequencysmall.png
-figures/pareto.png
-figures/paretosmall
-figures/paretosmall.png
-figures/passmargin.png
-figures/passprobability.png
-figures/passprobabilitysmall.png
-figures/payload.png
-figures/payloadsmall.png
-figures/ricianKsmall.png
-figures/sf.png
-figures/sfsmall.png
 
 # Python
 __pycache__/
 *.pyc
 .pytest_cache/
 
-# Local Claude Code tooling
+# Local tools
 .claude/
+_site/

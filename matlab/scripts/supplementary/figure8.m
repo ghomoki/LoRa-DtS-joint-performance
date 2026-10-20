@@ -1,9 +1,11 @@
 %FIGURE8  Reproduce Figure 8 of Asad Ullah et al. (2024).
 %   SF12 PDR vs MAC payload, for various (B, F_C) combinations.
 %   Fixed: SF=12, H=560 km, LDRO=on, E_min=1 deg.
+%   Doppler only, as in the reference: an infinite Tx power makes the
+%   link budget always close (P_link = 1).
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 SF   = 12;
 H    = 560;
@@ -29,7 +31,7 @@ for c = 1:size(cases, 1)
     fprintf('Case %d/%d: B=%g kHz, F_C=%g MHz\n', c, size(cases, 1), B, F_C);
     for k = 1:length(PL_values)
         PL = PL_values(k);
-        PDR_matrix(k, c) = packetdeliveryratio(E, B, F_C, LDRO, SF, PL, H);
+        PDR_matrix(k, c) = packet_delivery_ratio(E, B, F_C, LDRO, SF, PL, H, P_tx_dbm=Inf);
     end
 end
 

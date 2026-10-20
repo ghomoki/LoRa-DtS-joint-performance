@@ -1,14 +1,14 @@
-function K = rician_K(E_deg)
+function K = rician_k(E_deg)
 %RICIAN_K  Elevation-dependent Rician K-factor for LEO satellite links.
 %
-%   K = rician_K(E_deg) returns the Rician K-factor given an elevation angle.
+%   K = rician_k(E_deg) returns the Rician K-factor given an elevation angle.
 %
 %   The model is fitted cubic splines for Kim et al. (2006)'s measured K values at {20, 30, 40, 60, 80} degrees elevation.
 %   The paper's polynomial fit formula contained a rounding error and does not extrapolate well.
 %    - 20 < E < 80: cubic spline interpolation
 %    - E > 80:      cubic spline extrapolation (further increasing)
 %    - E < 20:      fixed to K(20) = 3.07 as extrapolation would result in increasing K
-%   The interpolating function can be visualized with scripts/rician_K_plot.m
+%   The interpolating function can be visualized with scripts/paper/rician_k_plot.m
 
 arguments
     E_deg   % Elevation angle (degrees)

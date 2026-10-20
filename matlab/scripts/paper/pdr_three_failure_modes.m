@@ -5,7 +5,7 @@
 %   single-figure illustration of the joint channel model.
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 E    = 1;          % Minimum elevation angle  (deg)
 B    = 62.5;       % Bandwidth                (kHz)
@@ -20,7 +20,7 @@ fprintf('Running 3-failure-mode scenario: SF=%d, B=%g kHz, F_C=%g MHz, H=%g km\n
 
 tic;
 [pdr, L_static, L_dynamic, L_joint, results] = ...
-    packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H);
+    packet_delivery_ratio(E, B, F_C, LDRO, SF, P_L, H);
 elapsed = toc;
 
 fprintf('PDR = %.4f over %d packets (%.1f s elapsed).\n', ...

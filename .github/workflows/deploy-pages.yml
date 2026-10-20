@@ -15,7 +15,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The site is only deployed if the Python port and the web app's
+  # SciPy-free modules still pass their regression tests
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r python/requirements.txt pytest
+      - run: python -m pytest python/tests webapp/tests
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     environment:
       name: github-pages

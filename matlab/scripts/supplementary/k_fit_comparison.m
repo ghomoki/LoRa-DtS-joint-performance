@@ -10,7 +10,7 @@
 %     - Degree 5 (6 coeffs): underdetermined; MATLAB warns and picks one solution
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 % Kim et al. (2006) Table II measured K values
 E_data = [20, 30, 40, 60, 80];

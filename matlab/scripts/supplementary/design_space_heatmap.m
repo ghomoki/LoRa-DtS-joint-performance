@@ -6,7 +6,7 @@
 %        if LDRO were always enabled, at the cost of throughput).
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 % Scenario (matches pdr_stress_demo.m)
 E    = 1;        % Minimum elevation angle  (deg)
@@ -41,13 +41,13 @@ for s = 1:n_SF
 
         % Mode 1: LDRO off when not mandatory
         rng(0);
-        [pdr1, ~, ~, ~, ~] = packetdeliveryratio( ...
+        [pdr1, ~, ~, ~, ~] = packet_delivery_ratio( ...
             E, B, F_C, LDRO_mandatory(s, b), SF, P_L, H);
         PDR_realistic(s, b) = pdr1;
 
         % Mode 2: LDRO on everywhere
         rng(0);
-        [pdr2, ~, ~, ~, ~] = packetdeliveryratio( ...
+        [pdr2, ~, ~, ~, ~] = packet_delivery_ratio( ...
             E, B, F_C, true, SF, P_L, H);
         PDR_always_on(s, b) = pdr2;
 

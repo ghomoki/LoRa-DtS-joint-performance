@@ -1,8 +1,8 @@
-%PDR_DEMO  Smoke-test invocation of packetdeliveryratio for one scenario.
+%PDR_DEMO  Smoke-test invocation of packet_delivery_ratio for one scenario.
 %   Useful for quickly exercising the main pipeline after code changes.
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 E    = 10;       % Minimum elevation angle  (deg)
 B    = 31.25;    % Bandwidth                (kHz)
@@ -13,7 +13,7 @@ P_L  = 55;       % Application payload      (bytes)
 H    = 560;      % Orbital altitude         (km)
 
 [pdr, L_static, L_dynamic, L_joint, results] = ...
-    packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H);
+    packet_delivery_ratio(E, B, F_C, LDRO, SF, P_L, H);
 
 fprintf('PDR = %.4f over %d packets in the pass.\n', pdr, height(results));
 fprintf('  Static  Doppler failures: %d (%.1f%%)\n', sum(L_static),  100*mean(L_static));

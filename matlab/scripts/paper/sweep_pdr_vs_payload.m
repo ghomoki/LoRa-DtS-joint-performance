@@ -4,7 +4,7 @@
 %   gives more time for the link to dip into a fade.
 
 clear;
-addpath(fullfile(fileparts(mfilename('fullpath')), '..'));
+addpath(fullfile(fileparts(mfilename('fullpath')), '..', '..'));
 
 % Baseline
 F_C_base  = 915;
@@ -33,7 +33,7 @@ tic;
 for c = 1:numel(cases)
     for k = 1:length(P_L_values)
         rng(0);
-        PDR(k, c) = packetdeliveryratio( ...
+        PDR(k, c) = packet_delivery_ratio( ...
             E, cases(c).B, F_C_base, cases(c).LDRO, cases(c).SF, P_L_values(k), H_base);
     end
     fprintf('  [%d/%d] %s done\n', c, numel(cases), cases(c).label);

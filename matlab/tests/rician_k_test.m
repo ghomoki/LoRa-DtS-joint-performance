@@ -1,4 +1,4 @@
-classdef rician_K_test < matlab.unittest.TestCase
+classdef rician_k_test < matlab.unittest.TestCase
 %RICIAN_K_TEST  Regression test for the elevation-dependent K(E) spline.
 %
 %   Covers:
@@ -35,14 +35,14 @@ classdef rician_K_test < matlab.unittest.TestCase
 
     methods (Test)
         function matchesSplineModel(testCase, scenario)
-            actual = rician_K(scenario.E);
+            actual = rician_k(scenario.E);
             testCase.verifyEqual(actual, scenario.expected, "AbsTol", scenario.tol);
         end
 
         function vectorized(testCase)
-            % rician_K should accept and return arrays
+            % rician_k should accept and return arrays
             E = [10, 20, 50, 80, 90];
-            K = rician_K(E);
+            K = rician_k(E);
             testCase.verifySize(K, size(E));
             testCase.verifyEqual(K(1), 3.07, "AbsTol", 1e-6);  % floor
             testCase.verifyEqual(K(2), 3.07, "AbsTol", 1e-6);  % data point

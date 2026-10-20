@@ -1,8 +1,8 @@
-function [PDR, L_static_arr, L_dynamic_arr, L_joint_arr, results] = packetdeliveryratio(E_min, B_kHz, F_C_MHz, LDRO, SF, P_L, H_km, opts)
-%PACKETDELIVERYRATIO  LoRa Direct-to-Satellite packet delivery ratio with Doppler + link-budget constraints.
+function [PDR, L_static_arr, L_dynamic_arr, L_joint_arr, results] = packet_delivery_ratio(E_min, B_kHz, F_C_MHz, LDRO, SF, P_L, H_km, opts)
+%PACKET_DELIVERY_RATIO  LoRa Direct-to-Satellite packet delivery ratio with Doppler + link-budget constraints.
 %
 %   [PDR, L_static_arr, L_dynamic_arr, L_joint_arr, results] = ...
-%       packetdeliveryratio(E, B, F_C, LDRO, SF, P_L, H, ...)
+%       packet_delivery_ratio(E, B, F_C, LDRO, SF, P_L, H, ...)
 %
 %   For a direct overhead satellite pass at packet reporting interval R_p, and for
 %   each candidate packet:
@@ -111,7 +111,7 @@ while t <= tau/2
     % Received SNR
     SNR_mean_lin = P_rx_mean_W / sigma_w_W;
     % Rician factor
-    K            = rician_K(E_t_deg);
+    K            = rician_k(E_t_deg);
 
     % Link budget closure probability
     P_link = link_success_prob(SNR_mean_lin, K, D_SNR_lin);
